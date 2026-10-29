@@ -25,6 +25,15 @@ const BUTTON_TOUCH_GROW := 16.0
 var _touch_zones := {}  # finger index -> zone
 var _mouse_zone := ZONE_NONE
 
+# Screen area (e.g. the pause button) where a touch must not count as "forward".
+var blocked_rect := Rect2()
+
+
+# Forgets every held finger, e.g. when the game pauses and releases can't be seen.
+func release_all() -> void:
+	_touch_zones.clear()
+	_mouse_zone = ZONE_NONE
+
 
 # Drawn rectangle of a side button (zone is ZONE_LEFT or ZONE_RIGHT).
 func button_rect(zone: String) -> Rect2:
@@ -89,8 +98,7 @@ func _input(event: InputEvent) -> void:
 func _notification(what: int) -> void:
 	# Don't leave a button stuck on if the app loses focus mid-press.
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
-		_touch_zones.clear()
-		_mouse_zone = ZONE_NONE
+		release_all()
 
 
 # A finger that starts on a side button can slide to the other one without lifting.
@@ -103,6 +111,8 @@ func _slide(zones: Dictionary, index: int, position: Vector2) -> void:
 
 
 func _zone_at(position: Vector2) -> String:
+	if blocked_rect.has_point(position):
+		return ZONE_NONE
 	if button_rect(ZONE_LEFT).grow(BUTTON_TOUCH_GROW).has_point(position):
 		return ZONE_LEFT
 	if button_rect(ZONE_RIGHT).grow(BUTTON_TOUCH_GROW).has_point(position):

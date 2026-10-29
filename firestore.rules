@@ -4,32 +4,11 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // One document per player, named after their uid. Anyone can read the board.
+    // Only the backend writes it (the Admin SDK ignores these rules), after checking the
+    // score is plausible. Every other collection (e.g. otp) is closed to clients.
     match /leaderboard/{uid} {
       allow read: if true;
-
-      // Only the owner, only with a verified email, and a valid entry.
-      allow create: if validEntry(uid);
-
-      // A score can only go up.
-      allow update: if validEntry(uid)
-        && request.resource.data.score >= resource.data.score;
-
-      allow delete: if false;
-    }
-
-    function validEntry(uid) {
-      let data = request.resource.data;
-      return request.auth != null
-        && request.auth.uid == uid
-        && request.auth.token.email_verified == true
-        && data.keys().hasOnly(['name', 'score', 'updatedAt'])
-        && data.name is string
-        && data.name.size() >= 3
-        && data.name.size() <= 16
-        && data.score is int
-        && data.score >= 0
-        && data.score <= 1000000
-        && data.updatedAt is timestamp;
+      allow write: if false;
     }
   }
 }

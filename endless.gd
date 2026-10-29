@@ -40,6 +40,7 @@ var rng := RandomNumberGenerator.new()
 
 
 func _setup_world() -> void:
+	Cloud.start_run()
 	rng.randomize()
 	start_y = player.global_position.y
 	cursor_y = start_y - RUN_UP

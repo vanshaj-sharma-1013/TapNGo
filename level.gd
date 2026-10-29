@@ -20,6 +20,9 @@ const CRASH_VIBRATE_MS := 200
 # After the last crash, wait for the death animation to finish plus a short beat, then restart.
 const RESTART_HOLD := 0.35
 
+const PAUSE_BUTTON_SIZE := 96.0
+const PAUSE_BUTTON_MARGIN := 24.0
+
 const UI_THEME := preload("res://ui_theme.tres")
 const NEON_CYAN := Color("00e5ff")
 const NEON_YELLOW := Color("ffd36b")
@@ -57,6 +60,21 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	status_label.text = player.status_text()
+
+
+func _exit_tree() -> void:
+	Controls.blocked_rect = Rect2()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		_pause()
+
+
+# Pause when the app loses focus (phone call, app switch).
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		_pause()
 
 
 # Hook: the big title shown before the countdown.
@@ -230,11 +248,32 @@ func _grant_revive() -> void:
 
 
 func _restart() -> void:
+	get_tree().paused = false
 	get_tree().reload_current_scene.call_deferred()
 
 
 func _go_to_menu() -> void:
+	get_tree().paused = false
 	get_tree().change_scene_to_file.call_deferred(MENU_SCENE)
+
+
+# Not offered while a panel is open or the player is dead, so it never replaces the crash panel.
+func _pause() -> void:
+	if get_tree().paused or panel != null or not player.alive:
+		return
+	get_tree().paused = true
+	Controls.release_all()
+	_show_panel("Paused", [
+		["Resume", _resume],
+		["Restart", _restart],
+		["Menu", _go_to_menu],
+	])
+	panel.process_mode = Node.PROCESS_MODE_ALWAYS
+
+
+func _resume() -> void:
+	_close_panel()
+	get_tree().paused = false
 
 
 func _build_ui() -> void:
@@ -261,6 +300,16 @@ func _build_ui() -> void:
 	status_label.add_theme_font_size_override("font_size", 34)
 	status_label.add_theme_color_override("font_color", Color("ffd36b"))
 	ui.add_child(status_label)
+
+	var pause_button := Button.new()
+	pause_button.text = "II"
+	pause_button.add_theme_font_size_override("font_size", 40)
+	pause_button.size = Vector2(PAUSE_BUTTON_SIZE, PAUSE_BUTTON_SIZE)
+	pause_button.position = Vector2(get_viewport_rect().size.x - PAUSE_BUTTON_MARGIN - PAUSE_BUTTON_SIZE, PAUSE_BUTTON_MARGIN)
+	pause_button.pressed.connect(_pause)
+	ui.add_child(pause_button)
+	# A tap on the button must not also count as "move forward".
+	Controls.blocked_rect = Rect2(pause_button.position, pause_button.size).grow(12.0)
 
 
 func _set_hud(text: String) -> void:
