@@ -1,0 +1,29 @@
+[gd_scene format=3 uid="uid://7lfsn56bk88p"]
+
+[ext_resource type="Script" uid="uid://bjle3oim3arf" path="res://player.gd" id="1_onrkg"]
+[ext_resource type="Script" uid="uid://djxqmdhk4claa" path="res://camera_shake.gd" id="2_cam"]
+[ext_resource type="SpriteFrames" path="res://player_frames.tres" id="4_frames"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_r5xam"]
+radius = 24.0
+
+[node name="Player" type="CharacterBody2D" unique_id=2133359261 groups=["player"]]
+script = ExtResource("1_onrkg")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1992032468]
+shape = SubResource("CircleShape2D_r5xam")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+texture_filter = 1
+scale = Vector2(0.4, 0.4)
+sprite_frames = ExtResource("4_frames")
+animation = &"idle"
+autoplay = "idle"
+
+[node name="HitBox" type="Area2D" parent="." unique_id=2113158422]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="HitBox" unique_id=561663706]
+shape = SubResource("CircleShape2D_r5xam")
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=460643839]
+script = ExtResource("2_cam")

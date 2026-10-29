@@ -1,0 +1,14 @@
+Automated validation results
+============================
+idle: 4 PNGs, all 160x220 RGBA with transparent pixels
+walk: 8 PNGs, all 160x220 RGBA with transparent pixels
+run: 8 PNGs, all 160x220 RGBA with transparent pixels
+jump: 4 PNGs, all 160x220 RGBA with transparent pixels
+fall: 2 PNGs, all 160x220 RGBA with transparent pixels
+hurt: 2 PNGs, all 160x220 RGBA with transparent pixels
+death: 4 PNGs, all 160x220 RGBA with transparent pixels
+idle: alpha bounds (44, 24, 120, 196) ... (44, 28, 120, 200); fixed canvas and centerline
+walk: alpha bounds (44, 24, 120, 196) ... (44, 28, 120, 200); fixed canvas and centerline
+run: alpha bounds (52, 24, 128, 200) ... (52, 24, 128, 200); fixed canvas and centerline
+
+Visual note: automated checks verify dimensions/transparency and frame existence; please inspect the contact sheet/GIF for artistic quality and loop feel.

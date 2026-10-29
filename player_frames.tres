@@ -1,0 +1,100 @@
+[gd_resource type="SpriteFrames" load_steps=49 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/character_assets/idle/idle_00.png" id="idle_00"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/idle/idle_01.png" id="idle_01"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/idle/idle_02.png" id="idle_02"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/idle/idle_03.png" id="idle_03"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/walk/walk_00.png" id="walk_00"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/walk/walk_01.png" id="walk_01"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/walk/walk_02.png" id="walk_02"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/walk/walk_03.png" id="walk_03"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/walk/walk_04.png" id="walk_04"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/walk/walk_05.png" id="walk_05"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/walk/walk_06.png" id="walk_06"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/walk/walk_07.png" id="walk_07"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/run/run_00.png" id="run_00"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/run/run_01.png" id="run_01"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/run/run_02.png" id="run_02"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/run/run_03.png" id="run_03"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/run/run_04.png" id="run_04"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/run/run_05.png" id="run_05"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/run/run_06.png" id="run_06"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/run/run_07.png" id="run_07"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/jump/jump_00.png" id="jump_00"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/jump/jump_01.png" id="jump_01"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/jump/jump_02.png" id="jump_02"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/jump/jump_03.png" id="jump_03"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/fall/fall_00.png" id="fall_00"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/fall/fall_01.png" id="fall_01"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/hurt/hurt_00.png" id="hurt_00"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/hurt/hurt_01.png" id="hurt_01"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/death/death_00.png" id="death_00"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/death/death_01.png" id="death_01"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/death/death_02.png" id="death_02"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/death/death_03.png" id="death_03"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/left/walk/left_walk_00.png" id="left_walk_00"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/left/walk/left_walk_01.png" id="left_walk_01"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/left/walk/left_walk_02.png" id="left_walk_02"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/left/walk/left_walk_03.png" id="left_walk_03"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/left/walk/left_walk_04.png" id="left_walk_04"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/left/walk/left_walk_05.png" id="left_walk_05"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/left/walk/left_walk_06.png" id="left_walk_06"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/left/walk/left_walk_07.png" id="left_walk_07"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/right/walk/right_walk_00.png" id="right_walk_00"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/right/walk/right_walk_01.png" id="right_walk_01"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/right/walk/right_walk_02.png" id="right_walk_02"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/right/walk/right_walk_03.png" id="right_walk_03"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/right/walk/right_walk_04.png" id="right_walk_04"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/right/walk/right_walk_05.png" id="right_walk_05"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/right/walk/right_walk_06.png" id="right_walk_06"]
+[ext_resource type="Texture2D" path="res://assets/character_assets/right/walk/right_walk_07.png" id="right_walk_07"]
+
+[resource]
+animations = [
+{
+"frames": [{"duration": 1.0, "texture": ExtResource("idle_00")}, {"duration": 1.0, "texture": ExtResource("idle_01")}, {"duration": 1.0, "texture": ExtResource("idle_02")}, {"duration": 1.0, "texture": ExtResource("idle_03")}],
+"loop": true,
+"name": &"idle",
+"speed": 5.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("walk_00")}, {"duration": 1.0, "texture": ExtResource("walk_01")}, {"duration": 1.0, "texture": ExtResource("walk_02")}, {"duration": 1.0, "texture": ExtResource("walk_03")}, {"duration": 1.0, "texture": ExtResource("walk_04")}, {"duration": 1.0, "texture": ExtResource("walk_05")}, {"duration": 1.0, "texture": ExtResource("walk_06")}, {"duration": 1.0, "texture": ExtResource("walk_07")}],
+"loop": true,
+"name": &"walk",
+"speed": 10.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("run_00")}, {"duration": 1.0, "texture": ExtResource("run_01")}, {"duration": 1.0, "texture": ExtResource("run_02")}, {"duration": 1.0, "texture": ExtResource("run_03")}, {"duration": 1.0, "texture": ExtResource("run_04")}, {"duration": 1.0, "texture": ExtResource("run_05")}, {"duration": 1.0, "texture": ExtResource("run_06")}, {"duration": 1.0, "texture": ExtResource("run_07")}],
+"loop": true,
+"name": &"run",
+"speed": 14.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("jump_00")}, {"duration": 1.0, "texture": ExtResource("jump_01")}, {"duration": 1.0, "texture": ExtResource("jump_02")}, {"duration": 1.0, "texture": ExtResource("jump_03")}],
+"loop": false,
+"name": &"jump",
+"speed": 10.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("fall_00")}, {"duration": 1.0, "texture": ExtResource("fall_01")}],
+"loop": true,
+"name": &"fall",
+"speed": 8.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("hurt_00")}, {"duration": 1.0, "texture": ExtResource("hurt_01")}],
+"loop": true,
+"name": &"hurt",
+"speed": 8.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("death_00")}, {"duration": 1.0, "texture": ExtResource("death_01")}, {"duration": 1.0, "texture": ExtResource("death_02")}, {"duration": 1.0, "texture": ExtResource("death_03")}],
+"loop": false,
+"name": &"death",
+"speed": 7.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("left_walk_00")}, {"duration": 1.0, "texture": ExtResource("left_walk_01")}, {"duration": 1.0, "texture": ExtResource("left_walk_02")}, {"duration": 1.0, "texture": ExtResource("left_walk_03")}, {"duration": 1.0, "texture": ExtResource("left_walk_04")}, {"duration": 1.0, "texture": ExtResource("left_walk_05")}, {"duration": 1.0, "texture": ExtResource("left_walk_06")}, {"duration": 1.0, "texture": ExtResource("left_walk_07")}],
+"loop": true,
+"name": &"walk_left",
+"speed": 12.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("right_walk_00")}, {"duration": 1.0, "texture": ExtResource("right_walk_01")}, {"duration": 1.0, "texture": ExtResource("right_walk_02")}, {"duration": 1.0, "texture": ExtResource("right_walk_03")}, {"duration": 1.0, "texture": ExtResource("right_walk_04")}, {"duration": 1.0, "texture": ExtResource("right_walk_05")}, {"duration": 1.0, "texture": ExtResource("right_walk_06")}, {"duration": 1.0, "texture": ExtResource("right_walk_07")}],
+"loop": true,
+"name": &"walk_right",
+"speed": 12.0
+}
+]
