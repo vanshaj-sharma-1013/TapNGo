@@ -19,17 +19,36 @@
 - Levels 6-10: same bars plus 2 fire and 2 ice patches per level (rules below).
 - Levels 8-10: some bars (3, 4, 5) stop sweeping and become fixed purple walls at the left, middle or right of the lane, so the player must steer around them.
 - Length grows by about 300px per level: level 1 is the shortest (3600px), level 10 about 6300px. Bars get slightly closer together as levels get longer.
-- Levels 11-15 (not built): rotating lasers, pendulums. Players pulse their taps.
-- Level data lives in `level_data.gd`. Level 1 is hand-written; 2-10 are built from a fixed seed, so they are identical every run.
-- Fairness rule: a bar must leave the player's lane clear for at least 0.5s each time it swings out (measured for a player standing in the middle of the lane). `level_data.gd` caps bar speed by width to guarantee it (the 256px bar is the slowest, 320 px/s), and `campaign.gd` warns in the Output panel if a generated bar ever drops below it. Level 1 is hand-tuned and exempt.
+- Levels 11-50 of the Jungle follow a difficulty curve that continues from level 10 (up to 34 bars, spacing down to 275px, up to 4 fire + 4 ice patches, up to 10 walls).
+- Level data lives in `level_data.gd`. Jungle level 1 is hand-written; every other level is built from a fixed seed, so they are identical every run.
+- Fairness rule: a bar must leave the player's lane clear for at least 0.5s each time it swings out (measured for a player standing in the middle of the lane; 0.6s in Pyramids and Frostbite, where steering or stopping is looser). `level_data.gd` caps bar speed by width to guarantee it (the 256px bar is the slowest, 320 px/s in the Jungle), and `campaign.gd` warns in the Output panel if a generated bar ever drops below it. Jungle level 1 is hand-tuned and exempt.
+
+## Worlds
+Four worlds, 50 levels each, defined in `world_data.gd`. Each world has its own art folder (`assets/themes/<id>/`), movement rules and hazards. Until real art exists, `world_art.gd` draws placeholders; a PNG at the same path replaces one with no code change.
+
+| World | Hazards | Movement |
+|---|---|---|
+| Jungle | logs / bamboo, walls (from level 8), fire + ice patches (from level 6) | normal |
+| Sun-Baked Pyramids | stone pillars, swinging scarabs (level 3+), spiked trapdoors (8+), walls (12+), quicksand (5+) | steering is loose (builds up and fades, 1500 px/s^2) |
+| Cyber Grid | laser bars, pulse barriers (4+), walls (15+), glitch zones (7+) | forward speed 1.2x (480 px/s); rows spaced 1.2x further apart |
+| Frostbite Summit | frozen bars, avalanche debris (3+), walls (14+), frost patches (6+) | letting go slides ~50px (0.25s) instead of stopping |
+
+- Hazard motions (`hazard.gd`): sweep, pendulum, fixed wall, blink (full-lane row, deadly only while ON; flashes red 0.35s before turning on; safe time is at least 0.9s), fall (a chunk drops onto a spot marked by a shadow, rests 0.3s, vanishes 1.4s).
+- Zones (`status_zone.gd`): fire and ice as above; **quicksand** slows to 0.55x while inside and 2s after; **glitch** swaps left and right for 2s; **frost patch** pushes the player about 120px forward or back (random), at most once per 1.5s.
+- Numbers per world (difficulty curve, intro levels, movement) are all in `world_data.gd` and tunable.
+
+### Stars and unlocking
+- Each level gives 1-3 stars (best is kept): **1** finish, **2** finish without using the revive, **3** also finish within the par time (level length / forward speed x 1.5; time spent paused or in the intro doesn't count).
+- Level n opens when level n-1 of the same world has at least 1 star. A world opens when the previous world has 50 stars (of its 150). `UNLOCK_ALL_LEVELS` in `game_data.gd` opens everything for testing.
+- Old saves with `levels_cleared` are migrated to 1 star on those Jungle levels.
 
 ### Fire and ice patches (levels 6-10)
 - Fixed and always on. Each patch is 300px wide in the 720px lane, sitting at the left, middle or right (fixed per level, picked from the level's seed), so the player steers around it with the side buttons.
 - **Fire:** touching an active patch starts a 10-second burn that kills the player when it runs out. Touching an active ice patch puts the fire out. Reaching the finish line first also saves you.
 - **Ice:** puts out a burn, freezes the player in place for 1s, then movement speed (forward and sideways) is 0.8x for 5s. The freeze and slow can't be re-applied while frozen or slowed, but the fire-extinguishing always works.
 - Reviving clears all effects.
-- Levels 16+: narrow corridors, collapsing floors, moving checkpoints.
-- Consider a scored endless mode built from the same hazard patterns. It is cheaper than hand-making 15+ levels and gives a high-score hook.
+- Endless mode: the world changes every 500 m (Jungle, Pyramids, Cyber Grid, Frostbite, repeat). All worlds are available. The floor, hazards and the player's movement rules switch at each boundary; speed keeps rising until 2000 m. The server accepts up to 9.6 m/s (Cyber Grid speed) when checking scores.
+- Ideas for later: narrow corridors, collapsing floors, moving checkpoints.
 
 ## Checkpoints and revive
 - Every level has checkpoints at roughly every third of its length.

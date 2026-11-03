@@ -19,18 +19,20 @@ const AUTH_PATH := "user://auth.json"
 
 # Our Node backend (see backend/README.md). Local testing: run `npm run dev` there.
 # Before an Android build, set this to the https Cloud Run URL: Android blocks plain http.
-const BACKEND_URL := "http://localhost:8080"
+const BACKEND_URL := "https://tapngo-backend-560665419309.europe-west1.run.app"
 
 const REQUEST_TIMEOUT := 15.0
 const NAME_MIN := 3
 const NAME_MAX := 16
+const FULL_NAME_MAX := 40
 const LEADERBOARD_SIZE := 50
 const GOOGLE_POLL_SECONDS := 2.0
 const GOOGLE_TIMEOUT_SECONDS := 300.0
 
 var uid := ""
 var email := ""
-var display_name := ""
+var display_name := ""  # the username, shown on the leaderboard
+var full_name := ""  # optional, set by the player; shown wherever it exists
 var email_verified := false
 
 var _run_token := ""
@@ -58,6 +60,11 @@ func can_play() -> bool:
 	return is_signed_in() and (email_verified or is_guest())
 
 
+# What to call the player on screen: their full name if they gave one, else the username.
+func shown_name() -> String:
+	return full_name if not full_name.is_empty() else display_name
+
+
 # Returns an error message, or "" if the name is fine.
 func validate_name(name: String) -> String:
 	if name.length() < NAME_MIN or name.length() > NAME_MAX:
@@ -65,12 +72,23 @@ func validate_name(name: String) -> String:
 	return ""
 
 
-func sign_up(name: String, new_email: String, password: String) -> Dictionary:
-	var name_error := validate_name(name)
-	if not name_error.is_empty():
-		return _failure("", name_error)
+# The start of the email, cleaned up to fit the username rules: "Jo.Smith+x@mail.com" -> "jo.smithx".
+func username_from_email(address: String) -> String:
+	var name := ""
+	for character in address.get_slice("@", 0).to_lower():
+		if (character >= "a" and character <= "z") or (character >= "0" and character <= "9") \
+				or character in ["_", ".", "-"]:
+			name += character
+	name = name.left(NAME_MAX)
+	while name.length() < NAME_MIN:
+		name += str(randi_range(0, 9))
+	return name
+
+
+func sign_up(new_email: String, password: String) -> Dictionary:
 	if new_email.is_empty() or password.is_empty():
 		return _failure("", "Enter your email and a password.")
+	var name := username_from_email(new_email)
 	var linking := is_guest()
 	var result: Dictionary
 	if linking:
@@ -97,6 +115,9 @@ func sign_up(name: String, new_email: String, password: String) -> Dictionary:
 			_apply_tokens(update.data)
 	_save_session()
 	auth_changed.emit()
+	if linking:
+		# Best effort: moves the guest's existing leaderboard entry to the new username.
+		update_profile(name, full_name)
 	# The account exists even if the email fails; "notice" tells the player to resend.
 	var sent := await send_verification()
 	return {"ok": true, "notice": "" if sent.ok else "We couldn't send your code. " + str(sent.message)}
@@ -192,22 +213,24 @@ func _finish_google(google_token: String) -> Dictionary:
 	if not result.ok:
 		return result
 
+	# Only a brand-new or just-upgraded account gets names filled in, so a returning player's
+	# own edits are never overwritten.
+	var first_time: bool = result.data.get("isNewUser", false) or body.has("idToken")
+	var google_name := str(result.data.get("displayName", "")).strip_edges()
 	_apply_tokens(result.data)
 	email = str(result.data.get("email", ""))
-	# Google names are often longer than the leaderboard allows.
-	var player_name := str(result.data.get("displayName", "")).strip_edges()
-	if not validate_name(player_name).is_empty():
-		player_name = player_name.left(NAME_MAX).strip_edges()
-		if player_name.length() < NAME_MIN:
-			player_name = "Player%d" % randi_range(1000, 9999)
+	if bool(result.data.get("isNewUser", false)):
 		var update := await _request(AUTH_URL + "update?key=" + API_KEY, HTTPClient.METHOD_POST, {
-			"idToken": _id_token, "displayName": player_name, "returnSecureToken": true})
+			"idToken": _id_token, "displayName": username_from_email(email), "returnSecureToken": true})
 		if update.ok:
 			_apply_tokens(update.data)
 	var profile := await _load_profile()
 	if not profile.ok:
 		sign_out()
 		return profile
+	if first_time and full_name.is_empty() and not google_name.is_empty():
+		# Best effort: the Google account's real name becomes the full name.
+		await update_profile(display_name, google_name.left(FULL_NAME_MAX))
 	_after_sign_in()
 	return {"ok": true}
 
@@ -216,6 +239,7 @@ func sign_out() -> void:
 	uid = ""
 	email = ""
 	display_name = ""
+	full_name = ""
 	email_verified = false
 	_id_token = ""
 	_refresh_token = ""
@@ -224,6 +248,21 @@ func sign_out() -> void:
 	if FileAccess.file_exists(AUTH_PATH):
 		DirAccess.remove_absolute(AUTH_PATH)
 	auth_changed.emit()
+
+
+# Saves the username and the optional full name (backend /profile). The full name may be "".
+func update_profile(new_username: String, new_full_name: String) -> Dictionary:
+	var name_error := validate_name(new_username.strip_edges())
+	if not name_error.is_empty():
+		return _failure("", name_error)
+	var result := await _backend_post("/profile", {
+		"username": new_username.strip_edges(), "fullName": new_full_name.strip_edges()})
+	if result.ok:
+		display_name = str(result.data.get("username", display_name))
+		full_name = str(result.data.get("fullName", full_name))
+		_save_session()
+		auth_changed.emit()
+	return result
 
 
 # Emails a 6-digit code (backend /otp/send).
@@ -261,11 +300,20 @@ func submit_score(score: int) -> Dictionary:
 	return await _backend_post("/runs/finish", {"run": _run_token, "score": score})
 
 
+# Reports every level's best stars (GameData.stars). The backend validates them and stores
+# the total for the level board. A failed call is safe to ignore; the next one resends all.
+func sync_stars(stars: Dictionary) -> Dictionary:
+	if not can_play():
+		return _failure("", "Not signed in.")
+	return await _backend_post("/stars/sync", {"stars": stars})
+
+
 # On success the result has "entries": [{uid, name, score}], best first.
-func fetch_top() -> Dictionary:
+# `collection` is "leaderboard" (endless metres) or "starboard" (total level stars).
+func fetch_top(collection := "leaderboard") -> Dictionary:
 	var result := await _request(FIRESTORE_URL + ":runQuery?key=" + API_KEY, HTTPClient.METHOD_POST, {
 		"structuredQuery": {
-			"from": [{"collectionId": "leaderboard"}],
+			"from": [{"collectionId": collection}],
 			"orderBy": [{"field": {"fieldPath": "score"}, "direction": "DESCENDING"}],
 			"limit": LEADERBOARD_SIZE,
 		}})
@@ -278,6 +326,7 @@ func fetch_top() -> Dictionary:
 			entries.append({
 				"uid": str(item.document.get("name", "")).get_file(),
 				"name": str(fields.get("name", {}).get("stringValue", "?")),
+				"full_name": str(fields.get("fullName", {}).get("stringValue", "")),
 				"score": int(fields.get("score", {}).get("integerValue", 0)),
 			})
 	return {"ok": true, "entries": entries}
@@ -286,6 +335,9 @@ func fetch_top() -> Dictionary:
 func _after_sign_in() -> void:
 	_save_session()
 	auth_changed.emit()
+	# Stars earned before this account existed (or while offline) join the level board.
+	if not GameData.stars.is_empty():
+		sync_stars(GameData.stars)
 
 
 func _backend_post(path: String, body: Dictionary) -> Dictionary:
@@ -310,6 +362,10 @@ func _load_profile() -> Dictionary:
 	email = str(user.get("email", email))
 	display_name = str(user.get("displayName", display_name))
 	email_verified = bool(user.get("emailVerified", false))
+	# The full name lives on our backend. If it can't be reached, keep the saved one.
+	var profile := await _request(BACKEND_URL + "/profile", HTTPClient.METHOD_GET, null, token)
+	if profile.ok and profile.data is Dictionary:
+		full_name = str(profile.data.get("fullName", ""))
 	_save_session()
 	return {"ok": true}
 
@@ -345,6 +401,7 @@ func _restore_session() -> void:
 	uid = str(data.get("uid", ""))
 	email = str(data.get("email", ""))
 	display_name = str(data.get("display_name", ""))
+	full_name = str(data.get("full_name", ""))
 	email_verified = bool(data.get("email_verified", false))
 	auth_changed.emit()
 	# Refresh in the background. Offline keeps the saved account; a dead account signs out.
@@ -364,6 +421,7 @@ func _save_session() -> void:
 		"uid": uid,
 		"email": email,
 		"display_name": display_name,
+		"full_name": full_name,
 		"email_verified": email_verified,
 	}))
 
@@ -444,6 +502,12 @@ func _friendly(error: String) -> String:
 			return "Verify your email first."
 		"NO_EMAIL":
 			return "This account has no email to verify."
+		"INVALID_USERNAME":
+			return "Usernames are %d-%d letters, numbers, spaces, dots, dashes or underscores." % [NAME_MIN, NAME_MAX]
+		"NAME_NOT_ALLOWED":
+			return "That name isn't allowed. Please pick another one."
+		"INVALID_FULL_NAME":
+			return "Names can use letters, spaces, dots, dashes and apostrophes, up to %d characters." % FULL_NAME_MAX
 		"SERVER_UNREACHABLE":
 			return "Can't reach the game server. Check your internet and try again."
 		"INVALID_CODE":

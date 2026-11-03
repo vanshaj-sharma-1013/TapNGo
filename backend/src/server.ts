@@ -3,7 +3,9 @@ import rateLimit from "@fastify/rate-limit";
 import { config } from "./config.js";
 import { googleRoutes } from "./routes/google.js";
 import { otpRoutes } from "./routes/otp.js";
+import { profileRoutes } from "./routes/profile.js";
 import { runRoutes } from "./routes/runs.js";
+import { starRoutes } from "./routes/stars.js";
 
 async function main(): Promise<void> {
   // trustProxy: Cloud Run sits behind a proxy, so rate limits need the real client IP.
@@ -21,7 +23,9 @@ async function main(): Promise<void> {
   app.get("/health", async () => ({ ok: true }));
   await app.register(googleRoutes);
   await app.register(otpRoutes);
+  await app.register(profileRoutes);
   await app.register(runRoutes);
+  await app.register(starRoutes);
 
   await app.listen({ port: config.port, host: "0.0.0.0" });
 }

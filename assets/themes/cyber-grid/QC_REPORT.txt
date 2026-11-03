@@ -1,0 +1,72 @@
+CYBER GRID ASSET PACK — QC REPORT
+
+AUTOMATED CHECKS
+lasers/laser_left.png: exists=True, dimensions=(64, 64) expected=(64, 64), RGBA=True
+lasers/laser_mid.png: exists=True, dimensions=(128, 64) expected=(128, 64), RGBA=True
+lasers/laser_right.png: exists=True, dimensions=(64, 64) expected=(64, 64), RGBA=True
+walls/wall_left.png: exists=True, dimensions=(64, 96) expected=(64, 96), RGBA=True
+walls/wall_mid.png: exists=True, dimensions=(128, 96) expected=(128, 96), RGBA=True
+walls/wall_right.png: exists=True, dimensions=(64, 96) expected=(64, 96), RGBA=True
+hazards/glitch.png: exists=True, dimensions=(750, 300) expected=(750, 300), RGBA=True
+hazards/pulse_on.png: exists=True, dimensions=(128, 64) expected=(128, 64), RGBA=True
+hazards/pulse_off.png: exists=True, dimensions=(128, 64) expected=(128, 64), RGBA=True
+level_objects/finish_gate.png: exists=True, dimensions=(1800, 300) expected=(1800, 300), RGBA=True
+level_objects/checkpoint_off.png: exists=True, dimensions=(1800, 160) expected=(1800, 160), RGBA=True
+level_objects/checkpoint_on.png: exists=True, dimensions=(1800, 160) expected=(1800, 160), RGBA=True
+environment/ground_tile.png: exists=True, dimensions=(720, 720) expected=(720, 720), RGBA=True
+environment/edge_left.png: exists=True, dimensions=(200, 720) expected=(200, 720), RGBA=True
+environment/edge_right.png: exists=True, dimensions=(200, 720) expected=(200, 720), RGBA=True
+
+Ground fully opaque: True
+Glitch patch confined to central oval bounds x=180..567, y=75..229: True
+Seam checks (edge pixel equality):
+laser_mid horizontal: True
+wall_mid horizontal: True
+pulse_on horizontal: True
+pulse_off horizontal: True
+ground horizontal: True
+ground vertical: True
+edge_left vertical: True
+edge_right vertical: True
+
+Cap-to-mid boundary checks:
+laser left-to-mid edge: True
+laser mid-to-right edge: True
+wall left-to-mid edge: True
+wall mid-to-right edge: True
+
+ON/OFF pair checks:
+pulse pair same dimensions: True
+checkpoint pair same dimensions: True
+
+Non-blank checks:
+lasers/laser_left.png: True
+lasers/laser_mid.png: True
+lasers/laser_right.png: True
+walls/wall_left.png: True
+walls/wall_mid.png: True
+walls/wall_right.png: True
+hazards/glitch.png: True
+hazards/pulse_on.png: True
+hazards/pulse_off.png: True
+level_objects/finish_gate.png: True
+level_objects/checkpoint_off.png: True
+level_objects/checkpoint_on.png: True
+environment/ground_tile.png: True
+environment/edge_left.png: True
+environment/edge_right.png: True
+
+VISUAL CHECKS (manual review of generated pixel-art outputs)
+- All assets use a limited cyber palette and hard-edged pixel blocks; no photographic imagery or smooth blur effects.
+- Transparent assets use RGBA alpha; ground_tile is opaque.
+- Glitch patch is clipped to its central pixelated oval; no artwork is placed outside its alpha mask.
+- Finish gate has a transparent central opening and transparent outside its two pylons/lintel.
+- Lane-edge rails are mirrored; both are vertically tileable by matched top/bottom rows.
+- Contact sheet is a labeled preview only; production PNGs are in their category folders.
+- Visual review is a basic generated-art inspection, not a substitute for in-engine playtesting.
+
+LIMITATIONS / NOTES
+- Laser and wall caps share exact boundary columns with their corresponding mids; their art is deliberately edge-aligned for assembly.
+- The bar mid horizontal seam is verified by exact edge-column equality. This is a strict edge test, not a full offset-composite inspection.
+- Ground tile seams are verified by exact opposite-edge equality; interior pattern is designed to be low-contrast and periodic.
+- PNGs are procedurally drawn pixel-art assets, not extracted from a source sheet.

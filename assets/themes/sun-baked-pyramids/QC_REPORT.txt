@@ -1,0 +1,44 @@
+QC REPORT — SUN-BAKED PYRAMIDS
+
+AUTOMATED CHECKS
+pillars/pillar_left.png: exists=True, dimensions=(64, 64), exact=True, mode=RGBA
+pillars/pillar_mid.png: exists=True, dimensions=(128, 64), exact=True, mode=RGBA
+pillars/pillar_right.png: exists=True, dimensions=(64, 64), exact=True, mode=RGBA
+scarabs/scarab_left.png: exists=True, dimensions=(64, 64), exact=True, mode=RGBA
+scarabs/scarab_mid.png: exists=True, dimensions=(128, 64), exact=True, mode=RGBA
+scarabs/scarab_right.png: exists=True, dimensions=(64, 64), exact=True, mode=RGBA
+walls/wall_left.png: exists=True, dimensions=(64, 96), exact=True, mode=RGBA
+walls/wall_mid.png: exists=True, dimensions=(128, 96), exact=True, mode=RGBA
+walls/wall_right.png: exists=True, dimensions=(64, 96), exact=True, mode=RGBA
+hazards/quicksand.png: exists=True, dimensions=(750, 300), exact=True, mode=RGBA
+hazards/trapdoor_on.png: exists=True, dimensions=(128, 64), exact=True, mode=RGBA
+hazards/trapdoor_off.png: exists=True, dimensions=(128, 64), exact=True, mode=RGBA
+level_objects/finish_gate.png: exists=True, dimensions=(1800, 300), exact=True, mode=RGBA
+level_objects/checkpoint_off.png: exists=True, dimensions=(1800, 160), exact=True, mode=RGBA
+level_objects/checkpoint_on.png: exists=True, dimensions=(1800, 160), exact=True, mode=RGBA
+environment/ground_tile.png: exists=True, dimensions=(720, 720), exact=True, mode=RGBA
+environment/edge_left.png: exists=True, dimensions=(200, 720), exact=True, mode=RGBA
+environment/edge_right.png: exists=True, dimensions=(200, 720), exact=True, mode=RGBA
+
+SEAM / STRUCTURE CHECKS
+hazards/trapdoor_on.png: horizontal boundary pixel equality=True
+hazards/trapdoor_off.png: horizontal boundary pixel equality=True
+ground_tile: horizontal=True, vertical=True, opaque=True
+environment/edge_left.png: vertical boundary pixel equality=True
+environment/edge_right.png: vertical boundary pixel equality=True
+pillar cap-to-mid boundary columns: left=True, right=True
+scarab cap-to-mid boundary columns: left=True, right=True
+wall cap-to-mid boundary columns: left=True, right=True
+checkpoint_off/checkpoint_on: same canvas dimensions and shared base coordinates verified by construction.
+trapdoor_on/trapdoor_off: same canvas dimensions; identical frame bounds and alignment verified by construction.
+quicksand: alpha outside the specified central oval bounds = 0 pixels.
+finish_gate: opening and exterior remain transparent by construction.
+
+VISUAL CHECKS (manual review)
+Manual review: all 18 images rendered as hard-edged pixel-art primitives; no external asset sheets used.
+Manual review: no intended text, letters, numbers, logos or watermarks; preview labels are confined to contact sheet.
+Manual review: obstacle silhouettes use higher contrast than the ground tile.
+Manual review: finish gate has transparent opening and transparent exterior outside tower/lintel shapes.
+Manual review: quicksand is a static central oval patch; automated alpha-bound check is recorded above.
+Manual review: checkpoint ON/OFF use matching canvas and shared structure layout; trapdoor ON/OFF share frame alignment.
+Limitation: complex visual artistry and pixel-perfect cap/mid continuity were approximated procedurally; inspect in Godot at runtime before release.

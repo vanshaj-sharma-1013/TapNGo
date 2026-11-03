@@ -10,5 +10,11 @@ service cloud.firestore {
       allow read: if true;
       allow write: if false;
     }
+
+    // Same idea for the level board: "score" is the player's total stars.
+    match /starboard/{uid} {
+      allow read: if true;
+      allow write: if false;
+    }
   }
 }

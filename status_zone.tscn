@@ -5,4 +5,4 @@
 [node name="StatusZone" type="Area2D"]
 script = ExtResource("1_zone")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="CollisionPolygon2D" type="CollisionPolygon2D" parent="."]

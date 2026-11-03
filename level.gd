@@ -4,7 +4,10 @@ extends Node2D
 # campaign.gd (levels) and endless.gd (endless mode) extend it.
 
 const SideButtons := preload("res://side_buttons.gd")
-const JungleBackground := preload("res://jungle_background.gd")
+const WorldBackground := preload("res://world_background.gd")
+const WorldData := preload("res://world_data.gd")
+const StarRow := preload("res://star_row.gd")
+const UiKit := preload("res://ui_kit.gd")
 
 const MENU_SCENE := "res://menu.tscn"
 
@@ -19,9 +22,12 @@ const CRASH_SHAKE_TIME := 0.4
 const CRASH_VIBRATE_MS := 200
 # After the last crash, wait for the death animation to finish plus a short beat, then restart.
 const RESTART_HOLD := 0.35
+# Pause after the death animation before the crash panel shows.
+const PANEL_DELAY := 0.3
 
 const PAUSE_BUTTON_SIZE := 96.0
 const PAUSE_BUTTON_MARGIN := 24.0
+const PANEL_WIDTH := 560.0
 
 const UI_THEME := preload("res://ui_theme.tres")
 const NEON_CYAN := Color("00e5ff")
@@ -33,6 +39,12 @@ const COUNT_STEP_TIME := 0.7
 const HINT_TIME := 3.5
 
 @export var level_number := 1
+# Which world's art and movement rules the level uses (WorldData). Set before super() runs.
+var world := WorldData.JUNGLE
+
+# Seconds of play since GO (paused time and the intro don't count), for the star rating.
+var run_time := 0.0
+var start_y := 0.0
 
 # Player is left untyped on purpose: it calls revive() / stop() from player.gd.
 @onready var player = $Player
@@ -49,8 +61,10 @@ var panel: Control
 
 
 func _ready() -> void:
-	add_child(JungleBackground.new())
+	add_child(_make_background())
+	player.apply_world(world)
 	respawn_point = player.global_position
+	start_y = player.global_position.y
 	_build_ui()
 	player.hit_hazard.connect(_on_player_hit)
 	_setup_world()
@@ -60,6 +74,16 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	status_label.text = player.status_text()
+
+
+func _physics_process(delta: float) -> void:
+	if player.alive and not player.frozen_for_intro:
+		run_time += delta
+
+
+# Hook: the floor behind the lane.
+func _make_background() -> Node2D:
+	return WorldBackground.new(world)
 
 
 func _exit_tree() -> void:
@@ -83,9 +107,13 @@ func _intro_title() -> String:
 
 
 # Hook: a one-time tutorial hint shown when the run starts. Empty = none.
-# Shown once per hint_id (saved in GameData).
+# Shown once per _hint_id() (saved in GameData).
 func _hint_text() -> String:
 	return ""
+
+
+func _hint_id() -> int:
+	return level_number
 
 
 # Holds the player and the hazards still while the title and 3-2-1 play.
@@ -102,8 +130,8 @@ func _start_countdown() -> void:
 	_flash_text("GO!", COUNT_STEP_TIME, 160, NEON_YELLOW)
 
 	var hint := _hint_text()
-	if hint != "" and not GameData.has_seen_hint(level_number):
-		GameData.mark_hint_seen(level_number)
+	if hint != "" and not GameData.has_seen_hint(_hint_id()):
+		GameData.mark_hint_seen(_hint_id())
 		_show_banner(hint, 0.22, 38, NEON_YELLOW, HINT_TIME)
 
 
@@ -114,6 +142,7 @@ func _flash_text(text: String, hold: float, font_size: int, color: Color) -> Twe
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART  # long world names wrap
 	label.add_theme_font_size_override("font_size", font_size)
 	label.add_theme_color_override("font_color", color)
 	label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.85))
@@ -175,7 +204,7 @@ func _on_run_crashed() -> void:
 
 # Hook: called when the crash can't be revived. Default is an instant restart.
 func _on_final_crash() -> void:
-	get_tree().create_timer(player.death_duration() + RESTART_HOLD).timeout.connect(_restart)
+	get_tree().create_timer(RESTART_HOLD).timeout.connect(_restart)
 
 
 # Hook: buttons on the level-complete panel.
@@ -213,6 +242,10 @@ func _on_player_hit(source: Node) -> void:
 	Sfx.play("crash")
 	_on_run_crashed()
 
+	# Let the death animation play out before the crash panel (or restart) appears.
+	await get_tree().create_timer(player.death_duration() + PANEL_DELAY).timeout
+	if not is_inside_tree() or player.alive:
+		return
 	if revive_used:
 		_on_final_crash()
 	else:
@@ -231,9 +264,32 @@ func _on_finished() -> void:
 		return
 	player.stop()
 	Sfx.play("finish")
-	GameData.mark_level_cleared(level_number)
-	_show_panel("Level Complete!", _finish_options())
+
+	var earned := _stars_earned()
+	var next_world := world + 1
+	var was_open := next_world >= WorldData.WORLD_COUNT or GameData.is_world_unlocked(next_world)
+	GameData.record_stars(world, level_number, earned)
+	var title := "Level Complete!"
+	if not was_open and GameData.is_world_unlocked(next_world):
+		title += "\n%s unlocked!" % WorldData.world_name(next_world)
+	_show_panel(title, _finish_options(), StarRow.new(earned, 56.0))
 	Ads.on_level_cleared(level_number)
+
+
+# 1 star for finishing, 2 for finishing without the revive, 3 for also beating the par time.
+func _stars_earned() -> int:
+	if revive_used:
+		return 1
+	return 3 if run_time <= _par_time() else 2
+
+
+# Time a clean run takes at full speed, plus the world's allowance for waiting at gaps.
+func _par_time() -> float:
+	if finish_line == null:
+		return INF
+	var rules := WorldData.world(world)
+	var distance := start_y - finish_line.global_position.y
+	return distance / (player.speed * float(rules["speed_mult"])) * (1.0 + float(rules["par_allowance"]))
 
 
 func _on_revive_pressed() -> void:
@@ -304,6 +360,7 @@ func _build_ui() -> void:
 	var pause_button := Button.new()
 	pause_button.text = "II"
 	pause_button.add_theme_font_size_override("font_size", 40)
+	UiKit.style_button(pause_button, "dark")
 	pause_button.size = Vector2(PAUSE_BUTTON_SIZE, PAUSE_BUTTON_SIZE)
 	pause_button.position = Vector2(get_viewport_rect().size.x - PAUSE_BUTTON_MARGIN - PAUSE_BUTTON_SIZE, PAUSE_BUTTON_MARGIN)
 	pause_button.pressed.connect(_pause)
@@ -317,32 +374,119 @@ func _set_hud(text: String) -> void:
 
 
 # options: Array of [button_text: String, on_pressed: Callable]
-func _show_panel(title: String, options: Array) -> void:
+# title: the first line is the heading; each further line is a detail ("Score 12", "NEW BEST!").
+# extra: an optional Control (e.g. the star row) shown under the heading.
+func _show_panel(title: String, options: Array, extra: Control = null) -> void:
 	_close_panel()
 
+	var root := Control.new()
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui.add_child(root)
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
+	# Darkens the level behind the card.
+	var dim := ColorRect.new()
+	dim.color = Color(0.0, 0.02, 0.06, 0.72)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(dim)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
 	var center := CenterContainer.new()
-	ui.add_child(center)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(center)
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
+	var lines := title.split("\n")
+	var accent := _panel_accent(lines[0])
+	var card := UiKit.card(Color(0.03, 0.06, 0.12, 0.96), Color(accent, 0.45))
+	center.add_child(card)
+
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 24)
-	center.add_child(box)
+	box.custom_minimum_size.x = PANEL_WIDTH
+	box.add_theme_constant_override("separation", 20)
+	card.add_child(box)
 
-	var label := Label.new()
-	label.text = title
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", 48)
-	box.add_child(label)
+	var heading := UiKit.title(lines[0].to_upper(), 64 if lines[0].length() <= 10 else 46, accent)
+	heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(heading)
 
-	for option in options:
+	if extra != null:
+		extra.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		box.add_child(extra)
+
+	for i in range(1, lines.size()):
+		box.add_child(_panel_line(lines[i]))
+
+	for i in options.size():
+		var option: Array = options[i]
+		var kind := "dark"
+		var icon := ""
+		var text := str(option[0])
+		if text.begins_with("Revive"):
+			kind = "purple"
+			icon = "play"
+		elif text == "Resume":
+			kind = "blue"
+			icon = "play"
+		elif text == "Restart" or text == "Play Again":
+			kind = "warn"
+			icon = "restart"
+		elif text == "Menu":
+			icon = "home"
 		var button := Button.new()
-		button.text = option[0]
-		button.custom_minimum_size = Vector2(580, 110)
-		button.add_theme_font_size_override("font_size", 32)
+		button.text = text.to_upper()
+		button.custom_minimum_size = Vector2(0.0, 100.0)
+		button.add_theme_font_size_override("font_size", 34)
+		UiKit.style_button(button, kind)
+		if icon != "":
+			UiKit.add_button_icon(button, icon, 40.0, Color.WHITE if kind != "dark" else UiKit.CYAN)
 		button.pressed.connect(option[1])
 		box.add_child(button)
 
-	panel = center
+	panel = root
+
+
+func _panel_accent(heading: String) -> Color:
+	match heading:
+		"Paused":
+			return Color("4fc3ff")
+		"Level Complete!":
+			return UiKit.GOLD
+	return UiKit.RED
+
+
+# "Score 12" and "Best 40" become a label-and-value row; other lines are plain centred text.
+func _panel_line(text: String) -> Control:
+	for key in ["Score ", "Best "]:
+		if text.begins_with(key):
+			var row := HBoxContainer.new()
+			var name_label := Label.new()
+			name_label.text = key.strip_edges().to_upper()
+			name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			name_label.add_theme_font_size_override("font_size", 30)
+			name_label.add_theme_color_override("font_color", UiKit.TEXT_DIM)
+			row.add_child(name_label)
+			var value_label := Label.new()
+			value_label.text = text.substr(key.length())
+			value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			value_label.add_theme_font_size_override("font_size", 40)
+			row.add_child(value_label)
+			return row
+
+	var label := Label.new()
+	label.text = text
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.add_theme_font_size_override("font_size", 34)
+	if text.ends_with("unlocked!"):
+		label.add_theme_color_override("font_color", UiKit.GREEN)
+	elif text == "NEW BEST!":
+		label.add_theme_color_override("font_color", Color.WHITE)
+		var ribbon := UiKit.card(Color("d8452b"), Color("ffb347"), 10, 18.0, 6.0)
+		ribbon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		ribbon.add_child(label)
+		return ribbon
+	return label
 
 
 func _close_panel() -> void:

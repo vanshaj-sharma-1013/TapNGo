@@ -4,16 +4,16 @@ import { Timestamp } from "firebase-admin/firestore";
 import { requireUser } from "../auth.js";
 import { config } from "../config.js";
 import { auth, db } from "../firebase.js";
+import { cleanUsername, isOffensive } from "../names.js";
 
-// Score is metres climbed in endless mode. The player moves at 400 px/s and
-// endless.gd counts 50 px per metre, so nobody can legitimately beat 8 m/s.
-const MAX_METRES_PER_SECOND = 8;
+// Score is metres climbed in endless mode. The player moves at 400 px/s (480 px/s in the
+// Cyber Grid world, 1.2x) and endless.gd counts 50 px per metre, so nobody can
+// legitimately beat 9.6 m/s.
+const MAX_METRES_PER_SECOND = 9.6;
 const TOLERANCE = 1.1;
 const SLACK_METRES = 3;
 const MAX_RUN_AGE_MS = 6 * 60 * 60 * 1000;
 const MAX_SCORE = 1_000_000;
-const NAME_MIN = 3;
-const NAME_MAX = 16;
 
 function sign(payload: string): string {
   return createHmac("sha256", config.runSecret).update(payload).digest("hex");
@@ -70,17 +70,22 @@ export async function runRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(422).send({ error: "SCORE_REJECTED" });
     }
 
-    const user = await auth.getUser(request.uid);
-    const name = user.displayName && user.displayName.length >= NAME_MIN && user.displayName.length <= NAME_MAX
-      ? user.displayName
-      : "Player";
+    const [user, profile] = await Promise.all([
+      auth.getUser(request.uid),
+      db.collection("profiles").doc(request.uid).get(),
+    ]);
+    // Names are public here, so anything offensive (e.g. an email-based username) is hidden.
+    const cleaned = cleanUsername(user.displayName);
+    const name = cleaned !== null && !isOffensive(cleaned) ? cleaned : "Player";
+    const savedFullName: string = profile.data()?.fullName ?? "";
+    const fullName = isOffensive(savedFullName) ? "" : savedFullName;
     const ref = db.collection("leaderboard").doc(request.uid);
     const improved = await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (snap.exists && (snap.data()?.score ?? 0) >= score) {
         return false;
       }
-      tx.set(ref, { name, score, updatedAt: Timestamp.now() });
+      tx.set(ref, { name, fullName, score, updatedAt: Timestamp.now() });
       return true;
     });
     return { ok: true, improved };

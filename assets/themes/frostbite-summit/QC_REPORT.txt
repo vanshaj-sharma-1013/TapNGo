@@ -1,0 +1,71 @@
+FROSTBITE SUMMIT ASSET PACK — QC REPORT
+
+AUTOMATED CHECKS
+frozen/frozen_left.png: exists=True; size=(64, 64); expected=(64, 64); RGBA=True
+frozen/frozen_mid.png: exists=True; size=(128, 64); expected=(128, 64); RGBA=True
+frozen/frozen_right.png: exists=True; size=(64, 64); expected=(64, 64); RGBA=True
+walls/wall_left.png: exists=True; size=(64, 96); expected=(64, 96); RGBA=True
+walls/wall_mid.png: exists=True; size=(128, 96); expected=(128, 96); RGBA=True
+walls/wall_right.png: exists=True; size=(64, 96); expected=(64, 96); RGBA=True
+hazards/frost_patch.png: exists=True; size=(750, 300); expected=(750, 300); RGBA=True
+hazards/debris.png: exists=True; size=(288, 220); expected=(288, 220); RGBA=True
+level_objects/finish_gate.png: exists=True; size=(1800, 300); expected=(1800, 300); RGBA=True
+level_objects/checkpoint_off.png: exists=True; size=(1800, 160); expected=(1800, 160); RGBA=True
+level_objects/checkpoint_on.png: exists=True; size=(1800, 160); expected=(1800, 160); RGBA=True
+environment/ground_tile.png: exists=True; size=(720, 720); expected=(720, 720); RGBA=True
+environment/edge_left.png: exists=True; size=(200, 720); expected=(200, 720); RGBA=True
+environment/edge_right.png: exists=True; size=(200, 720); expected=(200, 720); RGBA=True
+
+Ground fully opaque: True
+Frost patch painted-pixel bounds: (180, 75, 569, 228)
+Frost patch confined to specified central oval bounds: True
+
+Seam checks (opposite boundary pixels compared exactly):
+frozen_mid horizontal edge match: True
+wall_mid horizontal edge match: True
+ground horizontal edge match: True
+ground vertical edge match: True
+edge_left vertical edge match: True
+edge_right vertical edge match: True
+
+Cap-to-mid interface checks:
+frozen left cap -> mid boundary: True
+frozen mid -> right cap boundary: True
+wall left cap -> mid boundary: True
+wall mid -> right cap boundary: True
+
+ON/OFF pair checks:
+checkpoint ON/OFF same canvas: True
+checkpoint ON/OFF matching alpha silhouette: True (ON alpha explicitly aligned to OFF)
+
+Non-blank checks:
+frozen/frozen_left.png: True
+frozen/frozen_mid.png: True
+frozen/frozen_right.png: True
+walls/wall_left.png: True
+walls/wall_mid.png: True
+walls/wall_right.png: True
+hazards/frost_patch.png: True
+hazards/debris.png: True
+level_objects/finish_gate.png: True
+level_objects/checkpoint_off.png: True
+level_objects/checkpoint_on.png: True
+environment/ground_tile.png: True
+environment/edge_left.png: True
+environment/edge_right.png: True
+
+VISUAL CHECKS
+- Pixel-art forms use hard-edged shapes and a restrained cold palette; orange is reserved for active checkpoint lanterns.
+- Frost patch is a static irregular oval with alpha clipped to its mask; no artwork exists outside its alpha.
+- Debris is one connected chunk silhouette with no detached particles.
+- Finish gate has a transparent central opening and transparent exterior around the two pillars/lintel.
+- Checkpoint ON/OFF share the same geometry and verified identical alpha silhouette; active version changes lantern/flag illumination.
+- Lane edges are mirrored and vertically edge-matched.
+- Contact sheet is preview-only; individual production PNGs are stored in category folders.
+- Visual inspection is a basic asset review; in-engine readability and collision alignment still require playtesting.
+
+LIMITATIONS / VERIFICATION NOTES
+- All assets were generated as original procedural pixel-art PNGs, not extracted from a source sheet.
+- Horizontal/vertical seamlessness was verified by exact opposite-edge pixel equality for the listed repeatable textures. This is an edge test, not a full offset-composite inspection.
+- Frozen/wall cap connections were verified by exact interface-column equality.
+- No font/text or guide-line artwork was intentionally added to production assets.

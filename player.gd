@@ -11,6 +11,10 @@ const NEON_CYAN := Color("00e5ff")
 const FIRE_ORANGE := Color("ff5a1f")
 const ICE_BLUE := Color("bfefff")
 const SLOW_BLUE := Color("5ec8ff")
+const SAND_TAN := Color("e0b060")
+const GLITCH_PINK := Color("ff6bc0")
+
+const WorldData = preload("res://world_data.gd")
 
 # Fire: touching it starts a burn that kills after BURN_TIME, unless ice puts it out.
 # Ice: puts out a burn, freezes in place for FREEZE_TIME, then moves at SLOW_SCALE
@@ -19,6 +23,17 @@ const BURN_TIME := 10.0
 const FREEZE_TIME := 1.0
 const SLOW_TIME := 5.0
 const SLOW_SCALE := 0.8
+
+# Quicksand: moves at MIRE_SCALE speed while in it and for MIRE_TIME after.
+# Glitch zone: left and right swap for SCRAMBLE_TIME.
+# Frost patch: pushes SLIP_DISTANCE px forward or back over SLIP_TIME, at most once
+# every SLIP_COOLDOWN seconds.
+const MIRE_TIME := 2.0
+const MIRE_SCALE := 0.55
+const SCRAMBLE_TIME := 2.0
+const SLIP_DISTANCE := 120.0
+const SLIP_TIME := 0.3
+const SLIP_COOLDOWN := 1.5
 
 @export var speed := 400.0
 # Sideways speed from the steering buttons.
@@ -35,12 +50,23 @@ var frozen_for_intro := false
 var burn_left := 0.0
 var freeze_left := 0.0
 var slow_left := 0.0
+var mire_left := 0.0
+var scramble_left := 0.0
+var slip_left := 0.0
+var slip_velocity := 0.0   # px/s along the lane while slipping; positive is forward
+var slip_cooldown := 0.0
+
+# The current world's movement rules (see WorldData): speed multiplier, sideways
+# acceleration (0 = instant) and how long the player slides after letting go (0 = stops).
+var speed_mult := 1.0
+var steer_accel := 0.0
+var stop_slide := 0.0
 
 var _drawn_color := NEON_CYAN
 var _dust: CPUParticles2D
 
 @onready var hitbox: Area2D = $HitBox
-@onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
+@onready var sprite: Node2D = $CharacterView  # character_view.gd
 
 
 func _ready() -> void:
@@ -69,14 +95,31 @@ func _physics_process(delta: float) -> void:
 	if freeze_left > 0.0:
 		velocity = Vector2.ZERO  # frozen solid: no forward, no steering
 	else:
-		var speed_scale := SLOW_SCALE if slow_left > 0.0 else 1.0
-		# Forward is up the screen while held; releasing freezes instantly.
-		velocity.y = -speed * speed_scale if holding else 0.0
-		velocity.x = Controls.steer() * side_speed * speed_scale
+		var speed_scale := _speed_scale()
+		var forward := speed * speed_mult * speed_scale
+		# Forward is up the screen while held. Releasing freezes at once, except in worlds
+		# with a stop slide, where the player coasts to a halt.
+		if holding or stop_slide <= 0.0:
+			velocity.y = -forward if holding else 0.0
+		else:
+			velocity.y = move_toward(velocity.y, 0.0, speed * speed_mult / stop_slide * delta)
+
+		var steer := -Controls.steer() if scramble_left > 0.0 else Controls.steer()
+		var side := steer * side_speed * speed_scale
+		# Loose steering (sand) builds up and fades gradually instead of switching at once.
+		velocity.x = side if steer_accel <= 0.0 else move_toward(velocity.x, side, steer_accel * delta)
+
+		if slip_left > 0.0:
+			velocity.y -= slip_velocity
 
 	move_and_slide()
 
 	_clamp_to_screen()
+	# A hazard that switches on under the player (trapdoor, pulse barrier) never "enters".
+	for other in hitbox.get_overlapping_areas():
+		_on_hitbox_entered(other)
+	if not alive:  # died just now: keep the death animation
+		return
 	_update_animation(holding)
 	_dust.emitting = holding and freeze_left <= 0.0
 
@@ -99,8 +142,7 @@ func _update_animation(holding: bool) -> void:
 
 
 func _play(animation_name: StringName) -> void:
-	if sprite.animation != animation_name or not sprite.is_playing():
-		sprite.play(animation_name)
+	sprite.play(animation_name)
 
 
 # The camera never moves sideways, so the screen always shows x = 0 to the
@@ -163,6 +205,37 @@ func freeze() -> void:
 	slow_left = SLOW_TIME  # only starts counting down once the freeze ends
 
 
+# Called by an active quicksand patch. Slows the player for as long as they stay in it.
+func mire() -> void:
+	if not alive or invulnerable:
+		return
+	mire_left = MIRE_TIME
+
+
+# Called by an active glitch zone. Left and right swap for SCRAMBLE_TIME.
+func scramble() -> void:
+	if not alive or invulnerable:
+		return
+	scramble_left = maxf(scramble_left, SCRAMBLE_TIME)
+
+
+# Called by an active frost patch: a short push forward or back, chosen at random.
+func slip() -> void:
+	if not alive or invulnerable or slip_cooldown > 0.0:
+		return
+	slip_cooldown = SLIP_COOLDOWN
+	slip_left = SLIP_TIME
+	slip_velocity = SLIP_DISTANCE / SLIP_TIME * (1.0 if randf() < 0.5 else -1.0)
+
+
+# Sets the movement rules of a world (speed, steering feel, stop slide).
+func apply_world(world_index: int) -> void:
+	var rules := WorldData.world(world_index)
+	speed_mult = rules["speed_mult"]
+	steer_accel = rules["steer_accel"]
+	stop_slide = rules["stop_slide"]
+
+
 # Text for the HUD, e.g. "BURNING 2.3  SLOWED 4.1". Empty when nothing is active.
 func status_text() -> String:
 	var parts := PackedStringArray()
@@ -172,10 +245,29 @@ func status_text() -> String:
 		parts.append("FROZEN %.1f" % freeze_left)
 	elif slow_left > 0.0:
 		parts.append("SLOWED %.1f" % slow_left)
+	if mire_left > 0.0:
+		parts.append("MIRED")
+	if scramble_left > 0.0:
+		parts.append("SCRAMBLED %.1f" % scramble_left)
 	return "  ".join(parts)
 
 
+# Slowest of the active slowdowns.
+func _speed_scale() -> float:
+	var factor := 1.0
+	if slow_left > 0.0:
+		factor = SLOW_SCALE
+	if mire_left > 0.0:
+		factor = minf(factor, MIRE_SCALE)
+	return factor
+
+
 func _update_effects(delta: float) -> void:
+	mire_left = maxf(mire_left - delta, 0.0)
+	scramble_left = maxf(scramble_left - delta, 0.0)
+	slip_left = maxf(slip_left - delta, 0.0)
+	slip_cooldown = maxf(slip_cooldown - delta, 0.0)
+
 	if burn_left > 0.0:
 		burn_left = maxf(burn_left - delta, 0.0)
 		if burn_left == 0.0:
@@ -194,6 +286,10 @@ func _clear_effects() -> void:
 	burn_left = 0.0
 	freeze_left = 0.0
 	slow_left = 0.0
+	mire_left = 0.0
+	scramble_left = 0.0
+	slip_left = 0.0
+	slip_cooldown = 0.0
 	_refresh_color()
 
 
@@ -204,6 +300,10 @@ func _body_color() -> Color:
 		return ICE_BLUE
 	if slow_left > 0.0:
 		return SLOW_BLUE
+	if mire_left > 0.0:
+		return SAND_TAN
+	if scramble_left > 0.0:
+		return GLITCH_PINK
 	return NEON_CYAN
 
 
@@ -227,11 +327,7 @@ func _die(source: Node) -> void:
 
 # How long the death animation takes, so the level can wait for it before restarting.
 func death_duration() -> float:
-	var frames := sprite.sprite_frames
-	var total := 0.0
-	for i in frames.get_frame_count("death"):
-		total += frames.get_frame_duration("death", i)
-	return total / frames.get_animation_speed("death")
+	return sprite.death_duration()
 
 
 # Small puffs kicked up behind the player while running. Stays in the world, so it trails behind.
