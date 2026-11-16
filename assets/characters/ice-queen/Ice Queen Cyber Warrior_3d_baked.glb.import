@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://bsk113tqs0u8r"
-path="res://.godot/imported/TAP_N_GO_Adventure_Boy_Animated.glb-d86730f446c3b58abc647ac9727f8ac8.scn"
+uid="uid://vc6tui38m3yk"
+path="res://.godot/imported/Ice Queen Cyber Warrior_3d_baked.glb-0391a859c6aac61a92718ff3209ce092.scn"
 
 [deps]
 
-source_file="res://assets/player/TAP_N_GO_Adventure_Boy_Animated.glb"
-dest_files=["res://.godot/imported/TAP_N_GO_Adventure_Boy_Animated.glb-d86730f446c3b58abc647ac9727f8ac8.scn"]
+source_file="res://assets/characters/ice-queen/Ice Queen Cyber Warrior_3d_baked.glb"
+dest_files=["res://.godot/imported/Ice Queen Cyber Warrior_3d_baked.glb-0391a859c6aac61a92718ff3209ce092.scn"]
 
 [params]
 

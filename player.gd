@@ -13,8 +13,12 @@ const ICE_BLUE := Color("bfefff")
 const SLOW_BLUE := Color("5ec8ff")
 const SAND_TAN := Color("e0b060")
 const GLITCH_PINK := Color("ff6bc0")
+const BOOST_YELLOW := Color("ffe27a")
+const BOOST_PURPLE := Color("b48cff")
 
 const WorldData = preload("res://world_data.gd")
+const RunDust := preload("res://run_dust.gd")
+const Potions := preload("res://potions.gd")
 
 # Fire: touching it starts a burn that kills after BURN_TIME, unless ice puts it out.
 # Ice: puts out a burn, freezes in place for FREEZE_TIME, then moves at SLOW_SCALE
@@ -55,6 +59,11 @@ var scramble_left := 0.0
 var slip_left := 0.0
 var slip_velocity := 0.0   # px/s along the lane while slipping; positive is forward
 var slip_cooldown := 0.0
+# Potion effects: a speed multiplier for a while, and short immunity to fire / ice.
+var boost_left := 0.0
+var boost_scale := 1.0
+var fire_immune_left := 0.0
+var ice_immune_left := 0.0
 
 # The current world's movement rules (see WorldData): speed multiplier, sideways
 # acceleration (0 = instant) and how long the player slides after letting go (0 = stops).
@@ -63,7 +72,7 @@ var steer_accel := 0.0
 var stop_slide := 0.0
 
 var _drawn_color := NEON_CYAN
-var _dust: CPUParticles2D
+var _dust   # run_dust.gd
 
 @onready var hitbox: Area2D = $HitBox
 @onready var sprite: Node2D = $CharacterView  # character_view.gd
@@ -72,7 +81,8 @@ var _dust: CPUParticles2D
 func _ready() -> void:
 	hitbox.body_entered.connect(_on_hitbox_entered)
 	hitbox.area_entered.connect(_on_hitbox_entered)
-	_dust = _make_dust()
+	_dust = RunDust.new()
+	_dust.position = Vector2(0.0, 22.0)
 	add_child(_dust)
 	_play("idle")
 
@@ -186,7 +196,7 @@ func revive(at: Vector2) -> void:
 
 # Called by an active fire patch. Starts the burn once; it can't be put out.
 func ignite() -> void:
-	if not alive or invulnerable or burn_left > 0.0:
+	if not alive or invulnerable or burn_left > 0.0 or fire_immune_left > 0.0:
 		return
 	burn_left = BURN_TIME
 
@@ -199,10 +209,50 @@ func freeze() -> void:
 	if burn_left > 0.0:
 		burn_left = 0.0
 		_refresh_color()
-	if freeze_left > 0.0 or slow_left > 0.0:
+	if ice_immune_left > 0.0 or freeze_left > 0.0 or slow_left > 0.0:
 		return
 	freeze_left = FREEZE_TIME
 	slow_left = SLOW_TIME  # only starts counting down once the freeze ends
+
+
+# Speed potion: the run speed is multiplied by `scale` for `time` seconds (replaces any earlier one).
+func apply_speed_potion(scale: float, time: float) -> void:
+	boost_scale = scale
+	boost_left = time
+	_refresh_color()
+	potion_flash(BOOST_YELLOW if scale > 1.0 else BOOST_PURPLE)
+
+
+# Cooldown potion: puts out a burn. Returns false (and does nothing) if not burning.
+func extinguish() -> bool:
+	if not alive or burn_left <= 0.0:
+		return false
+	burn_left = 0.0
+	fire_immune_left = Potions.IMMUNE_TIME
+	_refresh_color()
+	potion_flash(SLOW_BLUE)
+	return true
+
+
+# Burning potion: melts a freeze and the slowdown after it. Returns false if not frozen or slowed.
+func thaw() -> bool:
+	if not alive or (freeze_left <= 0.0 and slow_left <= 0.0):
+		return false
+	freeze_left = 0.0
+	slow_left = 0.0
+	ice_immune_left = Potions.IMMUNE_TIME
+	_refresh_color()
+	potion_flash(FIRE_ORANGE)
+	return true
+
+
+# A burst of particles and a little pop of the character when a potion is drunk.
+func potion_flash(color: Color) -> void:
+	_spawn_burst(color)
+	var base := sprite.scale
+	var pop := create_tween()
+	pop.tween_property(sprite, "scale", base * 1.25, 0.1)
+	pop.tween_property(sprite, "scale", base, 0.2)
 
 
 # Called by an active quicksand patch. Slows the player for as long as they stay in it.
@@ -249,6 +299,12 @@ func status_text() -> String:
 		parts.append("MIRED")
 	if scramble_left > 0.0:
 		parts.append("SCRAMBLED %.1f" % scramble_left)
+	if boost_left > 0.0:
+		parts.append(("SPEED UP %.1f" if boost_scale > 1.0 else "SLOW DOWN %.1f") % boost_left)
+	if fire_immune_left > 0.0:
+		parts.append("FIREPROOF %.1f" % fire_immune_left)
+	if ice_immune_left > 0.0:
+		parts.append("ICEPROOF %.1f" % ice_immune_left)
 	return "  ".join(parts)
 
 
@@ -259,6 +315,8 @@ func _speed_scale() -> float:
 		factor = SLOW_SCALE
 	if mire_left > 0.0:
 		factor = minf(factor, MIRE_SCALE)
+	if boost_left > 0.0:
+		factor *= boost_scale
 	return factor
 
 
@@ -267,6 +325,9 @@ func _update_effects(delta: float) -> void:
 	scramble_left = maxf(scramble_left - delta, 0.0)
 	slip_left = maxf(slip_left - delta, 0.0)
 	slip_cooldown = maxf(slip_cooldown - delta, 0.0)
+	boost_left = maxf(boost_left - delta, 0.0)
+	fire_immune_left = maxf(fire_immune_left - delta, 0.0)
+	ice_immune_left = maxf(ice_immune_left - delta, 0.0)
 
 	if burn_left > 0.0:
 		burn_left = maxf(burn_left - delta, 0.0)
@@ -290,6 +351,9 @@ func _clear_effects() -> void:
 	scramble_left = 0.0
 	slip_left = 0.0
 	slip_cooldown = 0.0
+	boost_left = 0.0
+	fire_immune_left = 0.0
+	ice_immune_left = 0.0
 	_refresh_color()
 
 
@@ -304,6 +368,8 @@ func _body_color() -> Color:
 		return SAND_TAN
 	if scramble_left > 0.0:
 		return GLITCH_PINK
+	if boost_left > 0.0:
+		return BOOST_YELLOW if boost_scale > 1.0 else BOOST_PURPLE
 	return NEON_CYAN
 
 
@@ -328,26 +394,6 @@ func _die(source: Node) -> void:
 # How long the death animation takes, so the level can wait for it before restarting.
 func death_duration() -> float:
 	return sprite.death_duration()
-
-
-# Small puffs kicked up behind the player while running. Stays in the world, so it trails behind.
-func _make_dust() -> CPUParticles2D:
-	var dust := CPUParticles2D.new()
-	dust.position = Vector2(0.0, 22.0)
-	dust.z_index = -1
-	dust.local_coords = false
-	dust.emitting = false
-	dust.amount = 10
-	dust.lifetime = 0.45
-	dust.direction = Vector2(0.0, 1.0)
-	dust.spread = 30.0
-	dust.initial_velocity_min = 30.0
-	dust.initial_velocity_max = 70.0
-	dust.scale_amount_min = 3.0
-	dust.scale_amount_max = 6.0
-	dust.color = Color(0.85, 0.95, 0.85, 0.35)
-	dust.color_ramp = _fade_out_ramp()
-	return dust
 
 
 # One-shot burst where the player died. Added to the level so it outlives the player's state.

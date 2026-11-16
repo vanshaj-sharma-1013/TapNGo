@@ -8,6 +8,7 @@ const WorldBackground := preload("res://world_background.gd")
 const WorldData := preload("res://world_data.gd")
 const StarRow := preload("res://star_row.gd")
 const UiKit := preload("res://ui_kit.gd")
+const Potions := preload("res://potions.gd")
 
 const MENU_SCENE := "res://menu.tscn"
 
@@ -53,11 +54,17 @@ var start_y := 0.0
 # Set by campaign.gd; null in endless mode.
 var finish_line: Node2D = null
 var respawn_point: Vector2
+# True once any revive was used (the star rating looks at this); revives_used counts them.
 var revive_used := false
+var revives_used := 0
+# True while a revive ad is on its way, so a second tap can't start another.
+var _revive_pending := false
 var ui: Control
 var hud_label: Label
 var status_label: Label
 var panel: Control
+# Potion buttons in the HUD: potion id -> {"button": Button, "count": Label}.
+var _potion_buttons := {}
 
 
 func _ready() -> void:
@@ -202,6 +209,16 @@ func _on_run_crashed() -> void:
 	pass
 
 
+# Hook: how many revives a run gets. Levels get one; Endless more (each costing a bigger ad).
+func _max_revives() -> int:
+	return 1
+
+
+# Hook: text of the revive button. It must start with "Revive".
+func _revive_label() -> String:
+	return "Revive (watch ad)"
+
+
 # Hook: called when the crash can't be revived. Default is an instant restart.
 func _on_final_crash() -> void:
 	get_tree().create_timer(RESTART_HOLD).timeout.connect(_restart)
@@ -246,17 +263,22 @@ func _on_player_hit(source: Node) -> void:
 	await get_tree().create_timer(player.death_duration() + PANEL_DELAY).timeout
 	if not is_inside_tree() or player.alive:
 		return
-	if revive_used:
+	var ad_revive := revives_used < _max_revives()
+	var potions_left := GameData.potion_count(Potions.REVIVE)
+	if not ad_revive and potions_left <= 0:
 		_on_final_crash()
-	else:
-		var title := _crash_title()
-		if source == player:  # the player's own burn killed them
-			title = title.replace("Crashed!", "Burned!")
-		_show_panel(title, [
-			["Revive (watch ad)", _on_revive_pressed],
-			["Restart", _restart],
-			["Menu", _go_to_menu],
-		])
+		return
+	var title := _crash_title()
+	if source == player:  # the player's own burn killed them
+		title = title.replace("Crashed!", "Burned!")
+	var options := []
+	if potions_left > 0:
+		options.append(["Revive Potion x%d" % potions_left, _on_revive_potion_pressed])
+	if ad_revive:
+		options.append([_revive_label(), _on_revive_pressed])
+	options.append(["Restart", _restart])
+	options.append(["Menu", _go_to_menu])
+	_show_panel(title, options)
 
 
 func _on_finished() -> void:
@@ -270,10 +292,12 @@ func _on_finished() -> void:
 	var was_open := next_world >= WorldData.WORLD_COUNT or GameData.is_world_unlocked(next_world)
 	GameData.record_stars(world, level_number, earned)
 	var title := "Level Complete!"
+	if GameData.last_award > 0:
+		title += "\nCoins +%d" % GameData.last_award
 	if not was_open and GameData.is_world_unlocked(next_world):
 		title += "\n%s unlocked!" % WorldData.world_name(next_world)
 	_show_panel(title, _finish_options(), StarRow.new(earned, 56.0))
-	Ads.on_level_cleared(level_number)
+	Ads.on_level_cleared()
 
 
 # 1 star for finishing, 2 for finishing without the revive, 3 for also beating the par time.
@@ -293,22 +317,61 @@ func _par_time() -> float:
 
 
 func _on_revive_pressed() -> void:
-	Ads.show_rewarded(_grant_revive)
+	if _revive_pending:
+		return
+	_revive_pending = true
+	Ads.show_revive_ad(revives_used + 1, _grant_revive, _on_revive_failed)
+
+
+func _on_revive_failed(reason: String) -> void:
+	_revive_pending = false
+	if not is_inside_tree():
+		return
+	var message := "Watch the whole ad to revive."
+	if reason == "unavailable":
+		message = "No ad available right now.\nTry again in a moment."
+	_show_banner(message, 0.12, 36, NEON_YELLOW, 2.5)
 
 
 func _grant_revive() -> void:
+	revives_used += 1
+	_do_revive()
+
+
+# A revive potion: free, and it doesn't use up one of the run's ad revives.
+func _on_revive_potion_pressed() -> void:
+	if _revive_pending or not GameData.use_potion(Potions.REVIVE):
+		return
+	_do_revive()
+
+
+func _do_revive() -> void:
+	_revive_pending = false
 	revive_used = true
 	_close_panel()
 	Sfx.play("revive")
 	player.revive(respawn_point)
+	_refresh_potion_bar()
+	_show_banner("REVIVED!", 0.3, 56, Color("ff4d6d"), 1.0)
 
 
+# A restart from a dead player is a failed attempt; the 3rd in a row on one level earns an interstitial.
 func _restart() -> void:
+	if not player.alive and finish_line != null:
+		Ads.on_level_failed(world, level_number)
+	Ads.before_restart(_reload_scene)
+
+
+func _reload_scene() -> void:
 	get_tree().paused = false
 	get_tree().reload_current_scene.call_deferred()
 
 
 func _go_to_menu() -> void:
+	Ads.before_menu(_load_menu)
+
+
+func _load_menu() -> void:
 	get_tree().paused = false
 	get_tree().change_scene_to_file.call_deferred(MENU_SCENE)
 
@@ -366,7 +429,100 @@ func _build_ui() -> void:
 	pause_button.pressed.connect(_pause)
 	ui.add_child(pause_button)
 	# A tap on the button must not also count as "move forward".
-	Controls.blocked_rect = Rect2(pause_button.position, pause_button.size).grow(12.0)
+	var blocked := Rect2(pause_button.position, pause_button.size).grow(12.0)
+	blocked = blocked.merge(_build_potion_bar(pause_button.position + Vector2(0.0, PAUSE_BUTTON_SIZE + 12.0)).grow(12.0))
+	Controls.blocked_rect = blocked
+
+
+# One round button per potion, in a column under the pause button. Returns the area they cover
+# (a touch there must not count as "move forward"). Dimmed when the bag has none of that potion.
+func _build_potion_bar(top_left: Vector2) -> Rect2:
+	var ids := Potions.hud_ids()
+	var gap := 10.0
+	var size := PAUSE_BUTTON_SIZE
+	for i in ids.size():
+		var id: String = ids[i]
+		var info := Potions.get_potion(id)
+		var color: Color = info["color"]
+		var button := Button.new()
+		button.size = Vector2(size, size)
+		button.position = top_left + Vector2(0.0, i * (size + gap))
+		var normal := UiKit.box(Color(0.03, 0.07, 0.13, 0.85), Color(color, 0.9), 28, 3)
+		var pressed := UiKit.box(Color(color, 0.4), Color.WHITE, 28, 3)
+		button.add_theme_stylebox_override("normal", normal)
+		button.add_theme_stylebox_override("hover", normal)
+		button.add_theme_stylebox_override("pressed", pressed)
+		button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+		button.pressed.connect(_use_potion.bind(id))
+		ui.add_child(button)
+
+		var icon := Potions.PotionIcon.new(id, size * 0.7)
+		icon.position = Vector2(size * 0.15, size * 0.1)
+		icon.size = Vector2(size * 0.7, size * 0.7)
+		button.add_child(icon)
+
+		var count := Label.new()
+		count.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		count.add_theme_font_size_override("font_size", 26)
+		count.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.9))
+		count.add_theme_constant_override("outline_size", 8)
+		count.position = Vector2(size - 36.0, size - 40.0)
+		button.add_child(count)
+		_potion_buttons[id] = {"button": button, "count": count}
+	_refresh_potion_bar()
+	return Rect2(top_left, Vector2(size, ids.size() * (size + gap) - gap))
+
+
+func _refresh_potion_bar() -> void:
+	for id in _potion_buttons:
+		var owned := GameData.potion_count(id)
+		_potion_buttons[id]["count"].text = str(owned)
+		_potion_buttons[id]["button"].modulate = Color.WHITE if owned > 0 else Color(1, 1, 1, 0.45)
+
+
+# Drinks a potion mid-run. A potion that has nothing to do right now (not burning, not frozen,
+# speed already boosted) is not used up.
+func _use_potion(id: String) -> void:
+	if not player.alive or player.frozen_for_intro or get_tree().paused or panel != null:
+		return
+	var info := Potions.get_potion(id)
+	var color: Color = info["color"]
+	if GameData.potion_count(id) <= 0:
+		_show_banner("No %s - buy some in the Shop" % info["name"], 0.12, 34, NEON_YELLOW, 2.0)
+		return
+	var note := ""
+	match id:
+		Potions.SPEED_UP, Potions.SPEED_DOWN:
+			var up := id == Potions.SPEED_UP
+			if player.boost_left > 0.0 and (player.boost_scale > 1.0) == up:
+				note = "Already active"
+			else:
+				GameData.use_potion(id)
+				player.apply_speed_potion(Potions.SPEED_UP_SCALE if up else Potions.SPEED_DOWN_SCALE,
+						Potions.SPEED_UP_TIME if up else Potions.SPEED_DOWN_TIME)
+				_potion_used("SPEED UP!" if up else "SLOW DOWN", color)
+		Potions.COOLDOWN:
+			if player.burn_left <= 0.0:
+				note = "You're not on fire"
+			else:
+				GameData.use_potion(id)
+				player.extinguish()
+				_potion_used("COOLED DOWN!", color)
+		Potions.BURNING:
+			if player.freeze_left <= 0.0 and player.slow_left <= 0.0:
+				note = "You're not frozen"
+			else:
+				GameData.use_potion(id)
+				player.thaw()
+				_potion_used("THAWED!", color)
+	if note != "":
+		_show_banner(note, 0.12, 36, NEON_YELLOW, 1.2)
+
+
+func _potion_used(text: String, color: Color) -> void:
+	Sfx.play("revive")
+	_refresh_potion_bar()
+	_show_banner(text, 0.3, 56, color, 0.8)
 
 
 func _set_hud(text: String) -> void:
@@ -457,7 +613,7 @@ func _panel_accent(heading: String) -> Color:
 
 # "Score 12" and "Best 40" become a label-and-value row; other lines are plain centred text.
 func _panel_line(text: String) -> Control:
-	for key in ["Score ", "Best "]:
+	for key in ["Score ", "Best ", "Coins "]:
 		if text.begins_with(key):
 			var row := HBoxContainer.new()
 			var name_label := Label.new()
@@ -470,6 +626,8 @@ func _panel_line(text: String) -> Control:
 			value_label.text = text.substr(key.length())
 			value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 			value_label.add_theme_font_size_override("font_size", 40)
+			if key == "Coins ":
+				value_label.add_theme_color_override("font_color", UiKit.GOLD)
 			row.add_child(value_label)
 			return row
 

@@ -52,25 +52,35 @@ Four worlds, 50 levels each, defined in `world_data.gd`. Each world has its own 
 
 ## Checkpoints and revive
 - Every level has checkpoints at roughly every third of its length.
-- On a crash, the player gets **one revive per run**, offered every time, not only near the end of a hard level.
-- Revive = watch a rewarded ad, respawn at the last checkpoint with ~2s of invulnerability.
-- Declining, or having already used the revive, restarts the level instantly (under 1 second).
+- Levels: **one revive per run** (watch a rewarded ad), offered every time. Respawn at the last checkpoint with ~2s of invulnerability.
+- Endless: **up to three revives per run**, each a bigger ad: 1 = rewarded ad, 2 = rewarded interstitial, 3 = rewarded interstitial + rewarded ad (`Ads.show_revive_ad`). If a revive ad has no fill the player gets a "no ad available" message and can retry or restart.
+- Declining, or having no revives left, restarts the level instantly (under 1 second).
+
+## Coins
+- Local currency in `GameData.coins`. Spent on characters; never sold for real money.
+- **Levels:** 10 coins per star, only for stars not earned before (1 -> 3 stars on a replay pays 20). Replaying for the same stars pays nothing.
+- **Endless:** 1 coin per 10 m, only for distance past the all-time best. Total coins from Endless = best / 10, whatever the number of runs or revives (200 m best, then a 280 m run = +8).
+- Old saves are paid once for what they already earned (stars x 10 + best / 10), and keep the character they were wearing.
+- **Daily calendar** (`daily_rewards.gd`): Day 1 50, Day 2 75, Day 3 125, Day 4 100, Day 5 150, Day 6 200, Day 7 exclusive character (400 coins until a reward-only character, `"price": -1`, is added to the roster). Missing one day: watch a rewarded ad to keep the streak, or start over. Missing two or more days restarts.
+- **Characters:** `price` in `character_roster.gd` (only the Cyber Agent remains, free).
+- **Bust or Boom:** after an Endless run of 100 m or more, three boxes; a rewarded ad opens one. Hidden x5 / x2 / x1 of the run's base coins (1 per 10 m, at least 10). Coins only; the leaderboard score is untouched.
 
 ## Ads (rewarded-first)
-- **Rewarded ad:** the revive above, and nothing else. Always opt-in.
-- **Interstitial:** at most one every 4-5 cleared levels, only on the level-clear screen, never straight after a death, none before level 3.
+- **Rewarded ads (always opt-in):** revives, daily-streak recovery, Bust-or-Boom chests.
+- **Interstitials (`ads.gd`)** have no timer or per-level schedule. They show only (a) when the same campaign level was failed 3 times in a row, on the next Restart tap (level 3 or later), or (b) when returning to the menu after 10 minutes without any ad. Never within 2 minutes of any other ad, never in the middle of a run, never after Remove Ads.
+- **Remove All Ads** (one-time purchase, `remove_ads`, about $1.99): removes interstitials. Rewarded ads stay, since the player chooses them.
 - **No banner ads.** The screen is small and the controls are "tap anywhere", so banners cause accidental taps and policy penalties.
-- Open question: if the game could appeal to under-13s, Google Play's Families policy limits ad networks and formats. Decide the target audience before configuring ads.
+- Audience: general (13+). Setup steps are in `ADS_SETUP.md`.
 
 ## Look and feel
-- Dark neon: charcoal/black background, glowing cyan / hot pink / electric lime trails. Use a WorldEnvironment with glow.
-- Juice: fading player trail, screen shake and vibration on crash, short sounds for start/stop/crash.
+- Dark neon: charcoal/black background, glowing cyan / hot pink / electric lime accents. Use a WorldEnvironment with glow.
+- Juice: dust kicked up by the runner (`run_dust.gd`), screen shake and vibration on crash, short sounds for start/stop/crash.
 - Store the best scores and level progress locally.
 
 ## Open items
-- Built (verify in the editor): menu with level select (levels 1-10, `campaign.gd`; all unlocked while `UNLOCK_ALL_LEVELS` is true in `game_data.gd`), endless mode (`endless.gd`), finish line, checkpoints, revive, camera bounds, deterministic hazards, neon glow (`neon_env.tres`), trail, screen shake, vibration, sounds (`sfx/`), local save (`game_data.gd`), portrait + `keep_width` stretch.
-- Ads: `ads.gd` holds the rewarded-ad call and the interstitial rule (none before level 3, then one per 4 cleared levels). Both are stubs; the rewarded one grants the revive immediately. Install an ad plugin and fill in `_show_rewarded()` / `_show_interstitial()`.
-- Endless mode has no interstitials (the design only allows them on a level-clear screen).
+- Built (verify in the editor): menu with level select (levels 1-10, `campaign.gd`; all unlocked while `UNLOCK_ALL_LEVELS` is true in `game_data.gd`), endless mode (`endless.gd`), finish line, checkpoints, revive, camera bounds, deterministic hazards, neon glow (`neon_env.tres`), run dust, screen shake, vibration, sounds (`sfx/`), local save (`game_data.gd`), portrait + `keep_width` stretch.
+- Ads: `ads.gd` (rules) + `ads_admob.gd` (AdMob plugin adapter) + `ads_config.gd` (unit ids, test mode). Purchases: `store.gd` + `store_billing.gd`. Both adapters are inactive until their plugins are installed (see `ADS_SETUP.md`); debug builds then grant rewards at once so the game can be tested in the editor.
+- Not run yet: this session's coin / daily / chest / ad code was written without the Godot editor; open the project and check the Output panel.
 - Not built: more than one hand-built level / level select, a pause button, settings (mute, vibration off), tuning the difficulty ramp.
 - Android export needs the VIBRATE permission ticked in the export preset, or vibration does nothing.
 - Android export (templates, JDK, SDK, keystore, AAB) and Play Store closed-testing requirements: check current rules early.

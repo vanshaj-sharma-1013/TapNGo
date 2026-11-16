@@ -361,6 +361,10 @@ class Icon extends Control:
 				draw_polyline(PackedVector2Array([_p(0.2, 0.52), _p(0.42, 0.74), _p(0.8, 0.28)]), color, w * 1.3, true)
 			"crown":
 				draw_colored_polygon(PackedVector2Array([_p(0.1, 0.78), _p(0.1, 0.28), _p(0.32, 0.52), _p(0.5, 0.18), _p(0.68, 0.52), _p(0.9, 0.28), _p(0.9, 0.78)]), color)
+			"coin":
+				draw_circle(_p(0.5, 0.5), s * 0.46, color.darkened(0.45))
+				draw_circle(_p(0.5, 0.5), s * 0.38, color)
+				draw_arc(_p(0.5, 0.5), s * 0.24, 0.0, TAU, 20, color.darkened(0.45), w * 0.7, true)
 			"google":
 				draw_circle(_p(0.5, 0.5), s * 0.5, Color.WHITE)
 				draw_string(ThemeDB.fallback_font, _p(0.24, 0.76), "G", HORIZONTAL_ALIGNMENT_LEFT, -1, int(s * 0.72), Color("4285f4"))

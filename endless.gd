@@ -10,6 +10,13 @@ extends "res://level.gd"
 const HAZARD_SCENE := preload("res://hazard.tscn")
 const CHECKPOINT_SCENE := preload("res://checkpoint.tscn")
 const ZONE_SCENE := preload("res://status_zone.tscn")
+const ChestRow := preload("res://chest_row.gd")
+
+# Revives per run. Each is a bigger ad than the last (see Ads.show_revive_ad).
+const MAX_REVIVES := 3
+const REVIVE_LABELS := ["Revive (watch ad)", "Revive (bonus ad)", "Revive (2 ads)"]
+# A run of at least this many metres ends with the Bust-or-Boom chests.
+const CHEST_MIN_SCORE := 100
 
 # Sweeping-bar patterns, used by every world (drawn in that world's bar skin).
 # Each is a list of [dy, phase, speed]: dy is how far ahead (up, <= 0)
@@ -44,6 +51,8 @@ var next_checkpoint_y := 0.0
 var best_progress := 0.0
 var spawned: Node2D
 var new_best := false
+# Coins this run has paid so far (distance past the old best).
+var run_coins := 0
 var rng := RandomNumberGenerator.new()
 var current_world := WorldData.JUNGLE
 var special_patterns: Array = []
@@ -130,26 +139,48 @@ func _intro_title() -> String:
 
 
 func _crash_title() -> String:
-	return "Crashed!\nScore %d\nBest %d" % [_score(), GameData.best_endless]
+	return "Crashed!\nScore %d\nBest %d" % [_score(), GameData.best_endless] + _coins_line()
+
+
+func _coins_line() -> String:
+	return "\nCoins +%d" % run_coins if run_coins > 0 else ""
+
+
+func _max_revives() -> int:
+	return MAX_REVIVES
+
+
+func _revive_label() -> String:
+	return REVIVE_LABELS[mini(revives_used, REVIVE_LABELS.size() - 1)]
 
 
 func _on_run_crashed() -> void:
 	new_best = GameData.submit_endless_score(_score()) or new_best
+	run_coins += GameData.last_award
 
 
-# The revive is spent: show the result instead of restarting blindly.
+# Every revive is spent: show the result (and the chests after a good run) instead of restarting blindly.
 func _on_final_crash() -> void:
-	var title := "Game Over\nScore %d\nBest %d" % [_score(), GameData.best_endless]
+	var title := "Game Over\nScore %d\nBest %d" % [_score(), GameData.best_endless] + _coins_line()
 	if new_best:
 		title += "\nNEW BEST!"
+	var chests: Control = null
+	if _score() >= CHEST_MIN_SCORE:
+		chests = ChestRow.new(_chest_base_coins())
 	_show_panel(title, [
 		["Play Again", _restart],
 		["Menu", _go_to_menu],
-	])
+	], chests)
+
+
+# What a x1 box pays: one coin per 10 m of this run, at least 10.
+@warning_ignore("integer_division")
+func _chest_base_coins() -> int:
+	return maxi(_score() / GameData.METRES_PER_COIN, 10)
 
 
 # The respawn point may be in an earlier world than where the player died.
-func _grant_revive() -> void:
+func _do_revive() -> void:
 	super()
 	current_world = _world_at_y(respawn_point.y)
 	player.apply_world(current_world)

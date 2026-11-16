@@ -6,11 +6,13 @@ extends Node2D
 # Mirrors the bits of AnimatedSprite2D that player.gd uses: play(), animation, death_duration().
 
 const CharacterRoster := preload("res://character_roster.gd")
+const AgentRig := preload("res://agent_rig.gd")
 
 # The camera's view is this much taller than the model, so a little room is left around it.
 const VIEW_MARGIN := 1.18
 const DEATH_TIME := 1.5   # fallback if the Dead clip isn't found
-# Turned this far (radians) from straight behind, so the swinging limbs can be seen.
+# Turned this far (radians) from straight behind, so the swinging limbs can be seen. A roster
+# entry can override it with "gameplay_yaw" (0 = straight behind).
 const GAMEPLAY_YAW := 0.3
 
 # Playback speed of the Run clip for each game animation (0 holds the first frame).
@@ -29,6 +31,9 @@ var view_size := 256
 var face_camera := false
 # Menu preview: dragging spins the model all the way round, and it turns slowly on its own.
 var free_rotate := false
+# How many times wider than the model's own frame the render covers. A big value lets the model be
+# zoomed or tilted without the edge of the picture cutting it off. 1 = just the model.
+var view_extent := 1.0
 
 # Roster index to show. -1 (the default) is the player's selected character. Set before adding to the tree.
 var character := -1
@@ -39,10 +44,17 @@ var animation := &"idle"
 
 var _time := 0.0
 var _anim: AnimationPlayer
+var _rig   # an AgentRig, for models with no animation clips: pieces swung by code
 var _run_clip: StringName
 var _idle_clip: StringName
 var _dead_clip: StringName
 var _lean: Node3D   # sideways lean and turn
+var _pitch: Node3D  # tilts the model forward/back about its middle (menu drag)
+var _camera: Camera3D
+var _base_size := 1.0
+var _zoom := 1.0
+var _pan := 0.0     # camera height offset in world units
+var _pan_x := 0.0
 var _yaw: Node3D    # which side of the model the camera sees (fixed, or free in the menu)
 var _spin_idle := 0.0   # seconds since the last drag, for the auto-spin
 
@@ -60,22 +72,34 @@ func _ready() -> void:
 
 	_lean = Node3D.new()
 	viewport.add_child(_lean)
+	_pitch = Node3D.new()
+	_pitch.position.y = model_height / 2.0
+	_lean.add_child(_pitch)
 	_yaw = Node3D.new()
-	_yaw.rotation.y = 0.0 if face_camera else PI + GAMEPLAY_YAW
-	_lean.add_child(_yaw)
+	_yaw.position.y = -model_height / 2.0
+	_yaw.rotation.y = 0.0 if face_camera else PI + float(info.get("gameplay_yaw", GAMEPLAY_YAW))
+	_pitch.add_child(_yaw)
 
 	var model := (load(info["model"]) as PackedScene).instantiate() as Node3D
 	# Feet are at the origin. A Z-up model is stood upright; a Y-up one already is.
 	if info["z_up"]:
 		model.rotation.x = -PI / 2.0
 	_yaw.add_child(model)
+	var rig_kind: String = info.get("rig", "")
+	if rig_kind != "":
+		_setup_rig(model, rig_kind)
+	if info.get("auto_fit", false):
+		_auto_fit(model, model_height)
 	_apply_vertex_colors(model)
-	_setup_animations(model)
+	if _rig == null:
+		_setup_animations(model)
 	_apply_animation()
 
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = model_height * VIEW_MARGIN
+	camera.size = model_height * VIEW_MARGIN * view_extent
+	_camera = camera
+	_base_size = camera.size
 	var env := Environment.new()
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.8, 0.85, 1.0)
@@ -107,10 +131,91 @@ func rotate_by(radians: float) -> void:
 	_spin_idle = 0.0
 
 
+# Tilts the model forward/back about its middle (menu drag), so top and underside can be seen.
+func pitch_by(radians: float) -> void:
+	_pitch.rotation.x = wrapf(_pitch.rotation.x + radians, -PI, PI)
+	_spin_idle = 0.0
+
+
+# Zooms the menu camera by `factor` (>1 closer), 1x to 4x.
+func zoom_by(factor: float) -> void:
+	_zoom = clampf(_zoom * factor, 1.0, 4.0)
+	_apply_camera()
+	_spin_idle = 0.0
+
+
+# Slides the camera by a fraction of the view (x, y), to bring the head or feet to the middle.
+func pan_by(fraction: Vector2) -> void:
+	var frame := _base_size / view_extent
+	_pan_x -= fraction.x * frame / _zoom
+	_pan += fraction.y * frame / _zoom
+	_apply_camera()
+	_spin_idle = 0.0
+
+
+func reset_view() -> void:
+	_zoom = 1.0
+	_pan = 0.0
+	_pan_x = 0.0
+	_pitch.rotation.x = 0.0
+	_apply_camera()
+
+
+func _apply_camera() -> void:
+	if _camera == null:
+		return
+	_camera.size = _base_size / _zoom
+	# Keep the model in view: it may be panned only as far as it extends beyond the zoomed frame.
+	var frame := _base_size / view_extent
+	var limit := frame * 0.5 * (1.0 - 1.0 / _zoom) + frame * 0.1
+	_pan = clampf(_pan, -limit, limit)
+	_pan_x = clampf(_pan_x, -limit, limit)
+	_camera.h_offset = _pan_x
+	_camera.v_offset = _pan
+
+
 func death_duration() -> float:
+	if _rig != null:
+		return _rig.death_duration()
 	if _anim != null and _dead_clip != &"":
 		return _anim.get_animation(_dead_clip).length
 	return DEATH_TIME
+
+
+# Cuts the model's mesh into animated pieces (see agent_rig.gd).
+func _setup_rig(model: Node3D, kind: String) -> void:
+	for node in model.find_children("*", "MeshInstance3D", true, false):
+		var mesh_node := node as MeshInstance3D
+		if mesh_node.mesh == null or String(mesh_node.name).to_lower().contains("plane"):
+			continue
+		var rig = AgentRig.new()
+		if rig.build(mesh_node):
+			_rig = rig
+		return
+	push_warning("character_view: no mesh to rig in the character glb")
+
+
+# Hides ground planes, then scales the model to `height` and stands it centred on the origin.
+func _auto_fit(model: Node3D, height: float) -> void:
+	var to_model := model.get_parent_node_3d().global_transform.affine_inverse()
+	var bounds := AABB()
+	var first := true
+	for node in model.find_children("*", "MeshInstance3D", true, false):
+		var mesh_node := node as MeshInstance3D
+		if mesh_node.mesh == null:
+			continue
+		if String(mesh_node.name).to_lower().contains("plane"):
+			mesh_node.visible = false
+			continue
+		var box: AABB = (to_model * mesh_node.global_transform) * mesh_node.mesh.get_aabb()
+		bounds = box if first else bounds.merge(box)
+		first = false
+	if first or bounds.size.y <= 0.0001:
+		return
+	var factor := height / bounds.size.y
+	var centre := bounds.get_center()
+	model.basis = model.basis.scaled(Vector3.ONE * factor)
+	model.position = Vector3(-centre.x * factor, -bounds.position.y * factor, -centre.z * factor)
 
 
 # Some models have no materials, only colours painted on the vertices. Godot draws those plain
@@ -152,6 +257,9 @@ func _setup_animations(model: Node) -> void:
 
 # Starts the clip for the current game animation. Idle holds the first frame of Run.
 func _apply_animation() -> void:
+	if _rig != null:
+		_rig.update(0.0, animation, RUN_SPEEDS.get(animation, 1.0))
+		return
 	if _anim == null:
 		return
 	if animation == &"death":
@@ -175,6 +283,8 @@ func _apply_animation() -> void:
 
 func _process(delta: float) -> void:
 	_time += delta
+	if _rig != null:
+		_rig.update(delta, animation, RUN_SPEEDS.get(animation, 1.0))
 	if free_rotate:
 		_spin_idle += delta
 		if _spin_idle > 2.0:

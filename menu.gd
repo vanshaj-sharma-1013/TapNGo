@@ -6,7 +6,10 @@ const WorldBackground := preload("res://world_background.gd")
 const StarRow := preload("res://star_row.gd")
 const ButtonPreview := preload("res://button_preview.gd")
 const UiKit := preload("res://ui_kit.gd")
+const Shop := preload("res://shop.gd")
 const CharacterPicker := preload("res://character_picker.gd")
+const DailyPopup := preload("res://daily_popup.gd")
+const DailyRewards := preload("res://daily_rewards.gd")
 const UI_THEME := preload("res://ui_theme.tres")
 const MENU_BACKGROUND := preload("res://assets/ui/menu_background.jpg")
 const LOGO_DARK := preload("res://assets/logo/logo_dark.jpg")
@@ -108,6 +111,7 @@ func _show_main() -> void:
 	avatar.offset_bottom = 26.0
 	chip.add_child(avatar)
 	top.add_child(chip)
+	top.add_child(_coins_pill())
 	top.add_child(_stars_pill())
 
 	var logo := _make_logo()
@@ -119,6 +123,7 @@ func _show_main() -> void:
 
 	var picker := CharacterPicker.new()
 	picker.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	picker.coins_changed.connect(_show_main)  # a purchase changes the coin pill
 	page.add_child(picker)
 
 	var play := _add_icon_button("PLAY", "play", _show_worlds, 112, "warn")
@@ -130,9 +135,22 @@ func _show_main() -> void:
 	var nav := HBoxContainer.new()
 	nav.add_theme_constant_override("separation", 14)
 	page.add_child(nav)
-	for item in [["RANKS", "trophy", _show_leaderboard], ["BADGES", "shield", _show_achievements],
-			["OPTIONS", "gear", _show_settings], ["PROFILE", "person", _show_account]]:
+	for item in [["SHOP", "coin", _show_shop], ["RANKS", "trophy", _show_leaderboard],
+			["BADGES", "shield", _show_achievements], ["OPTIONS", "gear", _show_settings],
+			["PROFILE", "person", _show_account]]:
 		nav.add_child(_nav_tile(item[0], item[1], item[2]))
+
+	_maybe_show_daily()
+
+
+# The daily login popup: once per app session, and only if there is something to claim.
+func _maybe_show_daily() -> void:
+	if GameData.daily_prompt_shown or DailyRewards.status()["state"] == "claimed":
+		return
+	GameData.daily_prompt_shown = true
+	var popup := DailyPopup.new()
+	popup.closed.connect(_show_main)  # refresh the coin pill
+	add_child(popup)
 
 
 # "TAP-N-GO" in three colours.
@@ -159,6 +177,103 @@ void fragment() {
 	material.shader = shader
 	logo.material = material
 	return logo
+
+
+func _coins_pill() -> Control:
+	return UiKit.pill("%d" % GameData.coins, UiKit.GOLD, UiKit.Icon.new("coin", 30.0, UiKit.GOLD))
+
+
+# The shop: category tabs (characters, potions, trails, offers) built by shop.gd.
+func _show_shop(notice := "") -> void:
+	_clear()
+	var page := _full_layout(16)
+	page.add_child(_header("SHOP", _show_main, _coins_pill()))
+
+	var shop := Shop.new()
+	shop.notice = notice
+	shop.offers_builder = _shop_offers
+	shop.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	# Every purchase changes the coin pill, so the screen is rebuilt (the open tab is remembered).
+	shop.changed.connect(func() -> void: _show_shop.call_deferred())
+	page.add_child(shop)
+
+
+# Content of the Offers tab.
+func _shop_offers() -> Control:
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 14)
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	column.add_child(_shop_caption("ADS"))
+	column.add_child(_remove_ads_card())
+	var hint := Label.new()
+	hint.text = "Optional ads (revives, bonus chests, streak saves) always stay your choice."
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.add_theme_font_size_override("font_size", 22)
+	hint.add_theme_color_override("font_color", UiKit.TEXT_DIM)
+	column.add_child(hint)
+	return column
+
+
+func _shop_caption(text: String) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 24)
+	label.add_theme_color_override("font_color", UiKit.TEXT_DIM)
+	return label
+
+
+func _remove_ads_card() -> Control:
+	var card := UiKit.card(Color(0.03, 0.07, 0.13, 0.85), Color(UiKit.PURPLE, 0.6), 20, 18.0, 14.0)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 10)
+	card.add_child(column)
+
+	var title_label := Label.new()
+	title_label.text = "Remove All Ads"
+	title_label.add_theme_font_size_override("font_size", 30)
+	column.add_child(title_label)
+	var info := Label.new()
+	info.text = "One-time purchase. No more pop-up ads between runs."
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.add_theme_font_size_override("font_size", 22)
+	info.add_theme_color_override("font_color", UiKit.TEXT_DIM)
+	column.add_child(info)
+
+	if GameData.ads_removed:
+		var done := Button.new()
+		done.text = "ADS REMOVED"
+		done.disabled = true
+		done.custom_minimum_size = Vector2(0.0, 76.0)
+		done.add_theme_font_size_override("font_size", 28)
+		UiKit.style_button(done, "dark")
+		column.add_child(done)
+	elif Store.can_purchase():
+		var buy := Button.new()
+		buy.text = "REMOVE ADS  %s" % Store.remove_ads_price
+		buy.custom_minimum_size = Vector2(0.0, 84.0)
+		buy.add_theme_font_size_override("font_size", 30)
+		UiKit.style_button(buy, "purple")
+		buy.pressed.connect(func() -> void:
+			buy.disabled = true
+			Store.buy_remove_ads(_after_store))
+		column.add_child(buy)
+		var restore := Button.new()
+		restore.text = "RESTORE PURCHASE"
+		restore.custom_minimum_size = Vector2(0.0, 64.0)
+		restore.add_theme_font_size_override("font_size", 22)
+		UiKit.style_button(restore, "dark")
+		restore.pressed.connect(func() -> void:
+			restore.disabled = true
+			Store.restore(_after_store))
+		column.add_child(restore)
+	return card
+
+
+func _after_store(_ok: bool, message: String) -> void:
+	# The shop may have been closed while Google Play was open.
+	if is_inside_tree() and host.get_child_count() > 0:
+		Shop.tab = "offers"
+		_show_shop(message)
 
 
 func _stars_pill() -> Control:
